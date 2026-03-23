@@ -576,6 +576,7 @@ function deriveHighlightedObjectTypeIds(result: ParsedIntent, objectTypes: Objec
 function generateSemanticPreview(result: ParsedIntent, query: string) {
   const bookTitleMatch = query.match(/《([^》]+)》/);
   const personNameMatch = query.match(/(?:读者|用户|会员)\s*([^\s，,。]+)/);
+  const barcodeMatch = query.match(/(?:条码号?|barcode)\s*[:：]?\s*([A-Za-z0-9_-]+)/i);
   const dayMatch = query.match(/(\d+)\s*天/);
   const now = new Date();
   const startTime = now.toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -586,14 +587,53 @@ function generateSemanticPreview(result: ParsedIntent, query: string) {
   const endTime = end.toISOString().replace(/\.\d{3}Z$/, "Z");
   const personName = personNameMatch?.[1] || "张三";
   const bookTitle = bookTitleMatch?.[1] || "目标图书";
+  const barcode = barcodeMatch?.[1] || "TS2026001";
   const actionRuleName =
     result.action.id === "action-return"
       ? "归还规则"
       : result.action.id === "action-renew"
       ? "续借规则"
       : "普通借阅规则";
+  const rdf =
+    result.action.id === "action-return"
+      ? `# 归还事件语义网络
+lib:Event_Return_001 a lib:ReturnEvent ;
+    lib:actor lib:Person_${personName} ;
+    lib:object lib:Holding_${barcode} ;
+    lib:actualReturnTime "${startTime}"^^xsd:dateTime ;
+    lib:location lib:Branch_海淀馆 ;
+    lib:permittedBy lib:Rule_${actionRuleName} ;
+    lib:updatesLoan lib:Loan_${barcode} .
 
-  const rdf = `# 不仅仅是记录，而是语义网络
+lib:Loan_${barcode} a lib:Loan ;
+    lib:holding lib:Holding_${barcode} ;
+    lib:borrower lib:Person_${personName} ;
+    lib:loanStatus "RETURNED" ;
+    lib:actualReturnDate "${startTime}"^^xsd:dateTime .
+
+lib:Holding_${barcode} a lib:PhysicalBook ;
+    lib:barcode "${barcode}" ;
+    lib:holdingStatus "AVAILABLE" ;
+    lib:shelfLocation "I247.5/12" .`
+      : result.action.id === "action-renew"
+      ? `# 续借事件语义网络
+lib:Event_Renew_001 a lib:RenewEvent ;
+    lib:actor lib:Person_${personName} ;
+    lib:object lib:Loan_${barcode} ;
+    lib:startTime "${startTime}"^^xsd:dateTime ;
+    lib:endTime "${endTime}"^^xsd:dateTime ;
+    lib:permittedBy lib:Rule_${actionRuleName} .
+
+lib:Loan_${barcode} a lib:Loan ;
+    lib:holding lib:Holding_${barcode} ;
+    lib:borrower lib:Person_${personName} ;
+    lib:dueDate "${endTime}"^^xsd:dateTime ;
+    lib:renewalCount 1 .
+
+lib:Holding_${barcode} a lib:PhysicalBook ;
+    lib:barcode "${barcode}" ;
+    dc:title "${bookTitle}" .`
+      : `# 不仅仅是记录，而是语义网络
 lib:Event_Loan_001 a lib:BorrowingEvent ;
     lib:actor lib:Person_${personName} ;
     lib:object lib:Book_${bookTitle} ;
@@ -611,9 +651,23 @@ lib:Book_${bookTitle} a lib:PhysicalBook ;
     dc:title "${bookTitle}" ;
     lib:instanceOf lib:Work_${bookTitle}原著 ;
     lib:shelfLocation "I247.5/12" ;
-    lib:barcode "TS2026001" .`;
+    lib:barcode "${barcode}" .`;
 
-  const swrl = `# SWRL 规则表达
+  const swrl =
+    result.action.id === "action-return"
+      ? `# SWRL 规则表达（归还一致性）
+lib:Rule_归还状态同步 a lib:BusinessRule ;
+    lib:if """
+        ?event a lib:ReturnEvent .
+        ?event lib:updatesLoan ?loan .
+        ?loan a lib:Loan .
+        ?loan lib:holding ?holding .
+    """ ;
+    lib:then """
+        ?loan lib:loanStatus "RETURNED" .
+        ?holding lib:holdingStatus "AVAILABLE" .
+    """ .`
+      : `# SWRL 规则表达
 lib:Rule_逾期滞纳金 a lib:BusinessRule ;
     lib:if """
         ?loan a lib:Loan .
