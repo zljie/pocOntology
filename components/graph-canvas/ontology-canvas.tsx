@@ -1,0 +1,307 @@
+"use client";
+
+import React, { useCallback, useMemo } from "react";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  addEdge,
+  type Connection,
+  type Edge,
+  type Node,
+  type NodeTypes,
+  type EdgeTypes,
+  BackgroundVariant,
+  Panel,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { useOntologyStore } from "@/stores";
+import { useSelectionStore } from "@/stores";
+import { useUIStore } from "@/stores";
+import { ObjectTypeNode } from "./object-type-node";
+import { LinkTypeEdge } from "./link-type-edge";
+import { CanvasToolbar } from "./canvas-toolbar";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
+import { ObjectType, LinkType } from "@/lib/types/ontology";
+import { generateId } from "@/lib/utils";
+
+const nodeTypes: NodeTypes = {
+  objectType: ObjectTypeNode,
+};
+
+const edgeTypes: EdgeTypes = {
+  linkType: LinkTypeEdge,
+};
+
+// Generate initial layout positions
+function generateLayout(objectTypes: ObjectType[]): Record<string, { x: number; y: number }> {
+  const positions: Record<string, { x: number; y: number }> = {};
+  const cols = Math.ceil(Math.sqrt(objectTypes.length));
+  const nodeWidth = 220;
+  const nodeHeight = 160;
+  const gapX = 80;
+  const gapY = 80;
+
+  objectTypes.forEach((ot, index) => {
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    positions[ot.id] = {
+      x: col * (nodeWidth + gapX) + 100,
+      y: row * (nodeHeight + gapY) + 100,
+    };
+  });
+
+  return positions;
+}
+
+export function OntologyCanvas() {
+  const { objectTypes, linkTypes, addObjectType, addLinkType } = useOntologyStore();
+  const { selectedNodeId, semanticHighlightedNodeIds, selectNode, selectEdge, clearAll } = useSelectionStore();
+  const { showMinimap, showGrid, openRightPanel } = useUIStore();
+
+  // Convert object types to nodes
+  const initialNodes: Node[] = useMemo(() => {
+    const positions = generateLayout(objectTypes);
+    return objectTypes.map((ot) => ({
+      id: ot.id,
+      type: "objectType",
+      position: positions[ot.id] || { x: 0, y: 0 },
+      data: {
+        objectType: ot,
+        selected: selectedNodeId === ot.id,
+        highlighted: semanticHighlightedNodeIds.includes(ot.id),
+      },
+    }));
+  }, [objectTypes, selectedNodeId, semanticHighlightedNodeIds]);
+
+  // Convert link types to edges
+  const initialEdges: Edge[] = useMemo(() => {
+    return linkTypes.map((lt) => ({
+      id: lt.id,
+      source: lt.sourceTypeId,
+      target: lt.targetTypeId,
+      type: "linkType",
+      data: {
+        linkType: lt,
+        cardinality: lt.cardinality,
+        label: lt.displayName,
+      },
+    }));
+  }, [linkTypes]);
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  // Sync nodes with selected state
+  React.useEffect(() => {
+    setNodes((nds) =>
+      nds.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          selected: node.id === selectedNodeId,
+          highlighted: semanticHighlightedNodeIds.includes(node.id),
+        },
+      }))
+    );
+  }, [selectedNodeId, semanticHighlightedNodeIds, setNodes]);
+
+  // Sync with store data
+  React.useEffect(() => {
+    const positions: Record<string, { x: number; y: number }> = {};
+    
+    // Preserve existing positions
+    nodes.forEach((node) => {
+      positions[node.id] = node.position;
+    });
+    
+    // Add new nodes with positions
+    objectTypes.forEach((ot) => {
+      if (!positions[ot.id]) {
+        const cols = Math.ceil(Math.sqrt(objectTypes.length));
+        const index = objectTypes.indexOf(ot);
+        const col = index % cols;
+        const row = Math.floor(index / cols);
+        positions[ot.id] = {
+          x: col * 300 + 100,
+          y: row * 240 + 100,
+        };
+      }
+    });
+
+    const newNodes: Node[] = objectTypes.map((ot) => ({
+      id: ot.id,
+      type: "objectType",
+      position: positions[ot.id],
+      data: {
+        objectType: ot,
+        selected: selectedNodeId === ot.id,
+        highlighted: semanticHighlightedNodeIds.includes(ot.id),
+      },
+    }));
+    setNodes(newNodes);
+  }, [objectTypes, selectedNodeId, semanticHighlightedNodeIds, setNodes]);
+
+  React.useEffect(() => {
+    const newEdges: Edge[] = linkTypes.map((lt) => ({
+      id: lt.id,
+      source: lt.sourceTypeId,
+      target: lt.targetTypeId,
+      type: "linkType",
+      data: {
+        linkType: lt,
+        cardinality: lt.cardinality,
+        label: lt.displayName,
+      },
+    }));
+    setEdges(newEdges);
+  }, [linkTypes, setEdges]);
+
+  const onConnect = useCallback(
+    (params: Connection) => {
+      if (params.source && params.target) {
+        // Find the source object type
+        const sourceType = objectTypes.find((ot) => ot.id === params.source);
+        const targetType = objectTypes.find((ot) => ot.id === params.target);
+        
+        if (sourceType && targetType) {
+          // Create a new link type
+          addLinkType({
+            apiName: `${sourceType.apiName}${targetType.apiName}`,
+            displayName: `${sourceType.displayName} → ${targetType.displayName}`,
+            sourceTypeId: params.source,
+            targetTypeId: params.target,
+            cardinality: "ONE_TO_MANY",
+            foreignKeyPropertyId: sourceType.primaryKey || "",
+            visibility: "PROJECT",
+            properties: [],
+            layer: sourceType.layer,
+          });
+        }
+      }
+    },
+    [objectTypes, addLinkType]
+  );
+
+  const onNodeClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      selectNode(node.id);
+      openRightPanel();
+    },
+    [selectNode, openRightPanel]
+  );
+
+  const onEdgeClick = useCallback(
+    (_: React.MouseEvent, edge: Edge) => {
+      selectEdge(edge.id);
+      openRightPanel();
+    },
+    [selectEdge, openRightPanel]
+  );
+
+  const onPaneClick = useCallback(() => {
+    clearAll();
+  }, [clearAll]);
+
+  const handleAddNode = useCallback(() => {
+    const id = generateId();
+    const cols = Math.ceil(Math.sqrt(objectTypes.length + 1));
+    const index = objectTypes.length;
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+
+    addObjectType({
+      apiName: "NewObject",
+      displayName: "新对象",
+      visibility: "PROJECT",
+      primaryKey: "",
+      titleKey: "",
+      properties: [],
+      layer: "SEMANTIC",
+    });
+  }, [objectTypes, addObjectType]);
+
+  return (
+    <div className="w-full h-full">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onNodeClick={onNodeClick}
+        onEdgeClick={onEdgeClick}
+        onPaneClick={onPaneClick}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        fitView
+        snapToGrid={showGrid}
+        snapGrid={[16, 16]}
+        defaultEdgeOptions={{
+          type: "linkType",
+          animated: true,
+        }}
+        proOptions={{ hideAttribution: true }}
+      >
+        {showGrid && (
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={16}
+            size={1}
+            color="#2d2d2d"
+          />
+        )}
+        
+        <Controls 
+          className="!bg-[#1a1a18] !border-[#2d2d2d] !rounded-lg"
+          showZoom={true}
+          showFitView={true}
+          showInteractive={false}
+        />
+        
+        {showMinimap && (
+          <MiniMap
+            className="!bg-[#1a1a18] !border-[#2d2d2d] !rounded-lg"
+            nodeColor={(node) => {
+              if (node.data?.selected) return "#5b8def";
+              if (node.data?.highlighted) return "#8B5CF6";
+              return "#2d2d2d";
+            }}
+            maskColor="rgba(0, 0, 0, 0.8)"
+          />
+        )}
+
+        <Panel position="top-right" className="!m-4">
+          <CanvasToolbar />
+        </Panel>
+
+        <Panel position="bottom-right" className="!m-4">
+          <Button
+            size="sm"
+            variant="outline"
+            className="bg-[#1a1a18] border-[#2d2d2d] text-[#a0a0a0] hover:bg-[#2d2d2d] hover:text-white"
+            onClick={handleAddNode}
+          >
+            <Plus className="w-4 h-4 mr-1" />
+            添加节点
+          </Button>
+        </Panel>
+
+        {objectTypes.length === 0 && (
+          <Panel position="top-center" className="!mt-8">
+            <div className="bg-[#1a1a18] border border-[#2d2d2d] rounded-lg p-6 text-center">
+              <p className="text-[#6b6b6b] mb-2">画布为空</p>
+              <p className="text-xs text-[#4a4a4a]">
+                点击"添加节点"或从左侧面板创建对象类型
+              </p>
+            </div>
+          </Panel>
+        )}
+      </ReactFlow>
+    </div>
+  );
+}

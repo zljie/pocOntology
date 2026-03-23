@@ -1,0 +1,108 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@layer base {
+  :root {
+    --background: 60 9% 7%;
+    --foreground: 0 0% 91%;
+    --card: 60 9% 9%;
+    --card-foreground: 0 0% 91%;
+    --popover: 60 9% 9%;
+    --popover-foreground: 0 0% 91%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 60 9% 15%;
+    --secondary-foreground: 0 0% 91%;
+    --muted: 60 9% 15%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 60 9% 15%;
+    --accent-foreground: 0 0% 91%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 60 9% 18%;
+    --input: 60 9% 18%;
+    --ring: 217 91% 60%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #1a1a18;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #3d3d3d;
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4d4d4d;
+  }
+
+  /* React Flow customization */
+  .react-flow__node {
+    cursor: pointer;
+  }
+
+  .react-flow__edge-path {
+    stroke-linecap: round;
+  }
+
+  .react-flow__controls {
+    box-shadow: 0 0 0 1px rgba(45, 45, 45, 0.5);
+  }
+
+  .react-flow__controls-button {
+    background: #1a1a18;
+    border-color: #2d2d2d;
+    color: #a0a0a0;
+  }
+
+  .react-flow__controls-button:hover {
+    background: #2d2d2d;
+    color: white;
+  }
+
+  .react-flow__minimap {
+    box-shadow: 0 0 0 1px rgba(45, 45, 45, 0.5);
+  }
+
+  /* Animations */
+  @keyframes pulse-glow {
+    0%, 100% {
+      opacity: 0.5;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+}
+
+@layer utilities {
+  .font-mono {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+}
