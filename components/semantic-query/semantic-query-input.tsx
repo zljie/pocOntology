@@ -171,6 +171,12 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
   const [query, setQuery] = useState("");
   const [parsedResult, setParsedResult] = useState<ParsedIntent | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [agentIntro, setAgentIntro] = useState("");
+  const [parsedAgentStatus, setParsedAgentStatus] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [previewAgentStatus, setPreviewAgentStatus] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [agentError, setAgentError] = useState("");
+  const latestParseRequestRef = React.useRef(0);
 
   const { actionTypes, objectTypes, businessRules } = useOntologyStore();
   const {
@@ -183,24 +189,125 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
   const { openRightPanel } = useUIStore();
 
   // 解析查询
-  const parseQuery = useCallback(() => {
+  const parseQuery = useCallback(async () => {
+    const requestId = latestParseRequestRef.current + 1;
+    latestParseRequestRef.current = requestId;
     if (!query.trim()) {
       setParsedResult(null);
       clearSemanticHighlightedNodeIds();
       clearSemanticQueryPreview();
+      setAgentIntro("");
+      setParsedAgentStatus("idle");
+      setPreviewAgentStatus("idle");
+      setAgentError("");
       return;
     }
 
     setIsLoading(true);
-
-    // 模拟解析延迟
-    setTimeout(() => {
-      const result = performParsing(query, actionTypes, objectTypes, businessRules);
+    setIsStreaming(true);
+    setAgentIntro("");
+    setParsedAgentStatus("running");
+    setPreviewAgentStatus("running");
+    setAgentError("");
+    const normalizedQuery = query.trim();
+    try {
+      const result = performParsing(normalizedQuery, actionTypes, objectTypes, businessRules);
       setParsedResult(result);
-      setSemanticHighlightedNodeIds(deriveHighlightedObjectTypeIds(result, objectTypes, query));
-      setSemanticQueryPreview(generateSemanticPreview(result, query));
+      setSemanticHighlightedNodeIds(deriveHighlightedObjectTypeIds(result, objectTypes, normalizedQuery));
+      const localPreview = generateSemanticPreview(result, normalizedQuery);
+      setSemanticQueryPreview(localPreview);
+      const streamResolved = await requestSemanticAgentStream(normalizedQuery, (event) => {
+        if (latestParseRequestRef.current !== requestId) {
+          return;
+        }
+        if (event.type === "intro_delta") {
+          setAgentIntro((prev) => prev + String(event.delta || ""));
+          return;
+        }
+        if (event.type === "intro_done") {
+          if (!agentIntro) {
+            setAgentIntro(String(event.intro || ""));
+          }
+          return;
+        }
+        if (event.type === "parsed_result" && event.parsedResult) {
+          const normalizedLLMResult = normalizeLLMParsedResult(event.parsedResult, result);
+          setParsedResult(normalizedLLMResult);
+          setSemanticHighlightedNodeIds(
+            deriveHighlightedObjectTypeIds(normalizedLLMResult, objectTypes, normalizedQuery)
+          );
+          setParsedAgentStatus("done");
+          return;
+        }
+        if (event.type === "preview_result" && event.preview) {
+          setSemanticQueryPreview({
+            query: normalizedQuery,
+            generatedAt: new Date().toISOString(),
+            semanticScenario: event.preview.semanticScenario || localPreview.semanticScenario,
+            rdf: event.preview.rdf || localPreview.rdf,
+            swrl: event.preview.swrl || localPreview.swrl,
+            dsl: event.preview.dsl || localPreview.dsl,
+            graphqlTemplate: event.preview.graphqlTemplate || localPreview.graphqlTemplate,
+            templateVars: event.preview.templateVars || localPreview.templateVars,
+            schemaVersion: "semantic-preview.v2",
+            reasoning: event.preview.reasoning,
+            source: "llm",
+          });
+          setPreviewAgentStatus("done");
+          return;
+        }
+        if (event.type === "error") {
+          setAgentError(String(event.message || "流式解析失败"));
+          setParsedAgentStatus("error");
+          setPreviewAgentStatus("error");
+        }
+      });
+      if (latestParseRequestRef.current !== requestId) {
+        return;
+      }
+      if (!streamResolved) {
+        const llmPreview = await requestLLMSemanticPreview(normalizedQuery);
+        if (llmPreview?.parsedResult) {
+          const normalizedLLMResult = normalizeLLMParsedResult(llmPreview.parsedResult, result);
+          setParsedResult(normalizedLLMResult);
+          setSemanticHighlightedNodeIds(
+            deriveHighlightedObjectTypeIds(normalizedLLMResult, objectTypes, normalizedQuery)
+          );
+          setParsedAgentStatus("done");
+        } else {
+          setParsedAgentStatus("error");
+        }
+        if (llmPreview && (llmPreview.semanticScenario || llmPreview.rdf || llmPreview.swrl)) {
+          setSemanticQueryPreview({
+            query: normalizedQuery,
+            generatedAt: new Date().toISOString(),
+            semanticScenario: llmPreview.semanticScenario || localPreview.semanticScenario,
+            rdf: llmPreview.rdf || localPreview.rdf,
+            swrl: llmPreview.swrl || localPreview.swrl,
+            dsl: llmPreview.dsl || localPreview.dsl,
+            graphqlTemplate: llmPreview.graphqlTemplate || localPreview.graphqlTemplate,
+            templateVars: llmPreview.templateVars || localPreview.templateVars,
+            schemaVersion: "semantic-preview.v2",
+            reasoning: llmPreview.reasoning,
+            source: "llm",
+          });
+          setPreviewAgentStatus("done");
+        } else {
+          setPreviewAgentStatus("error");
+          setAgentError("语义服务暂不可用，已保留本地规则解析结果");
+        }
+      } else {
+        if (parsedAgentStatus === "running") {
+          setParsedAgentStatus("done");
+        }
+        if (previewAgentStatus === "running") {
+          setPreviewAgentStatus("done");
+        }
+      }
+    } finally {
+      setIsStreaming(false);
       setIsLoading(false);
-    }, 500);
+    }
   }, [
     query,
     actionTypes,
@@ -210,6 +317,9 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
     clearSemanticHighlightedNodeIds,
     setSemanticQueryPreview,
     clearSemanticQueryPreview,
+    agentIntro,
+    parsedAgentStatus,
+    previewAgentStatus,
   ]);
 
   React.useEffect(() => {
@@ -279,6 +389,19 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
       {/* Result */}
       <ScrollArea className="flex-1">
         <div className="p-4">
+          {(isStreaming ||
+            agentIntro ||
+            agentError ||
+            parsedAgentStatus !== "idle" ||
+            previewAgentStatus !== "idle") && (
+            <AgentOrchestrationPanel
+              isStreaming={isStreaming}
+              intro={agentIntro}
+              parsedAgentStatus={parsedAgentStatus}
+              previewAgentStatus={previewAgentStatus}
+              error={agentError}
+            />
+          )}
           {parsedResult ? (
             <ParseResultDisplay
               result={parsedResult}
@@ -573,6 +696,158 @@ function deriveHighlightedObjectTypeIds(result: ParsedIntent, objectTypes: Objec
   return Array.from(highlightedIds).filter((id) => validObjectTypeIds.has(id));
 }
 
+async function requestLLMSemanticPreview(query: string): Promise<{
+  semanticScenario?: string;
+  rdf?: string;
+  swrl?: string;
+  dsl?: string;
+  graphqlTemplate?: string;
+  templateVars?: Record<string, string>;
+  reasoning?: string;
+  parsedResult?: Partial<ParsedIntent>;
+} | null> {
+  try {
+    const response = await fetch("/api/semantic-query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json();
+    return {
+      semanticScenario: data?.semanticScenario,
+      rdf: data?.rdf,
+      swrl: data?.swrl,
+      dsl: data?.dsl,
+      graphqlTemplate: data?.graphqlTemplate,
+      templateVars: data?.templateVars,
+      reasoning: data?.reasoning,
+      parsedResult: data?.parsedResult,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function requestSemanticAgentStream(
+  query: string,
+  onEvent: (event: any) => void
+): Promise<boolean> {
+  try {
+    const response = await fetch("/api/semantic-query/stream", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query }),
+    });
+
+    if (!response.ok || !response.body) {
+      return false;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split("\n\n");
+      buffer = blocks.pop() || "";
+      for (const block of blocks) {
+        const line = block
+          .split("\n")
+          .find((item) => item.startsWith("data: "));
+        if (!line) continue;
+        const payload = line.slice(6);
+        if (!payload) continue;
+        try {
+          onEvent(JSON.parse(payload));
+        } catch {
+          onEvent({ type: "intro_delta", delta: payload });
+        }
+      }
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeLLMParsedResult(parsed: Partial<ParsedIntent>, fallback: ParsedIntent): ParsedIntent {
+  const rawParsed = parsed as any;
+  const rawAction = rawParsed?.action || rawParsed?.intentAction || {};
+  const rawEntities = Array.isArray(rawParsed?.entities)
+    ? rawParsed.entities
+    : Array.isArray(rawParsed?.identifiedEntities)
+    ? rawParsed.identifiedEntities
+    : [];
+  const rawSuggestedProperties = Array.isArray(rawParsed?.suggestedProperties)
+    ? rawParsed.suggestedProperties
+    : Array.isArray(rawParsed?.extractedParams)
+    ? rawParsed.extractedParams
+    : Array.isArray(rawParsed?.parameters)
+    ? rawParsed.parameters
+    : [];
+  const rawOutput = Array.isArray(rawParsed?.output)
+    ? rawParsed.output
+    : Array.isArray(rawParsed?.generatedFields)
+    ? rawParsed.generatedFields
+    : [];
+  const action = rawAction?.id
+    ? {
+        id: rawAction.id,
+        name: rawAction.name || fallback.action.name,
+        displayName: rawAction.displayName || fallback.action.displayName,
+        layer: rawAction.layer || "KINETIC",
+      }
+    : fallback.action;
+
+  const entities = rawEntities.length > 0
+    ? rawEntities.map((entity: any) => ({
+        type: entity.type || "OBJECT_TYPE",
+        id: entity.id,
+        name: entity.name || entity.displayName || "",
+        displayName: entity.displayName || entity.name || "",
+        confidence: typeof entity.confidence === "number" ? entity.confidence : 0.8,
+        matchedText: entity.matchedText || entity.displayName || entity.name || "",
+      }))
+    : fallback.entities;
+
+  const suggestedProperties = rawSuggestedProperties.length > 0
+    ? rawSuggestedProperties.map((prop: any) => ({
+        propertyId: prop.propertyId || "",
+        propertyName: prop.propertyName || prop.displayName || "",
+        displayName: prop.displayName || prop.propertyName || "",
+        value: String(prop.value ?? ""),
+        inferred: Boolean(prop.inferred),
+        source: prop.source || "STRING",
+        objectTypeId: prop.objectTypeId,
+      }))
+    : fallback.suggestedProperties;
+
+  return {
+    action,
+    entities,
+    suggestedProperties,
+    dataFlow: parsed.dataFlow || fallback.dataFlow,
+    businessRules:
+      Array.isArray(parsed.businessRules) && parsed.businessRules.length > 0
+        ? parsed.businessRules
+        : fallback.businessRules,
+    output: rawOutput.length > 0 ? rawOutput : fallback.output,
+  };
+}
+
 function generateSemanticPreview(result: ParsedIntent, query: string) {
   const bookTitleMatch = query.match(/《([^》]+)》/);
   const personNameMatch = query.match(/(?:读者|用户|会员)\s*([^\s，,。]+)/);
@@ -594,6 +869,45 @@ function generateSemanticPreview(result: ParsedIntent, query: string) {
       : result.action.id === "action-renew"
       ? "续借规则"
       : "普通借阅规则";
+  const dsl =
+    result.action.id === "action-return"
+      ? `ACTION ReturnBook WITH Holding.barcode="${barcode}"`
+      : result.action.id === "action-renew"
+      ? `ACTION RenewLoan WITH Loan.barcode="${barcode}", renewDays=${durationDays}`
+      : `ACTION CheckoutBook WITH Book.title="${bookTitle}", Patron.name="${personName}"`;
+  const graphqlTemplate =
+    result.action.id === "action-return"
+      ? `mutation ReturnBook($barcode: String!) {
+  returnBook(input: { barcode: $barcode }) {
+    loanId
+    loanStatus
+    holdingStatus
+    actualReturnDate
+  }
+}`
+      : result.action.id === "action-renew"
+      ? `mutation RenewLoan($barcode: String!, $renewDays: Int!) {
+  renewLoan(input: { barcode: $barcode, renewDays: $renewDays }) {
+    loanId
+    dueDate
+    renewalCount
+  }
+}`
+      : `mutation CheckoutBook($bookTitle: String!, $patronName: String!) {
+  checkoutBook(input: { bookTitle: $bookTitle, patronName: $patronName }) {
+    loanId
+    dueDate
+    loanStatus
+  }
+}`;
+  let templateVars: Record<string, string>;
+  if (result.action.id === "action-return") {
+    templateVars = { barcode };
+  } else if (result.action.id === "action-renew") {
+    templateVars = { barcode, renewDays: String(durationDays) };
+  } else {
+    templateVars = { bookTitle, patronName: personName };
+  }
   const rdf =
     result.action.id === "action-return"
       ? `# 归还事件语义网络
@@ -687,8 +1001,19 @@ lib:Rule_逾期滞纳金 a lib:BusinessRule ;
   return {
     query,
     generatedAt: new Date().toISOString(),
+    semanticScenario:
+      result.action.id === "action-return"
+        ? `系统识别为“归还图书”场景：通过条码定位馆藏副本，更新对应借阅记录为已归还，并将馆藏状态恢复为可借。`
+        : result.action.id === "action-renew"
+        ? `系统识别为“续借”场景：针对指定借阅记录延长应还日期，并执行续借规则校验。`
+        : `系统识别为“借阅”场景：基于读者与图书对象创建借阅事件，并派生应还时间与规则约束。`,
     rdf,
     swrl,
+    dsl,
+    graphqlTemplate,
+    templateVars,
+    schemaVersion: "semantic-preview.v2",
+    source: "rule" as const,
   };
 }
 
@@ -970,4 +1295,239 @@ function EmptyParseResult() {
       </div>
     </div>
   );
+}
+
+function AgentOrchestrationPanel({
+  isStreaming,
+  intro,
+  parsedAgentStatus,
+  previewAgentStatus,
+  error,
+}: {
+  isStreaming: boolean;
+  intro: string;
+  parsedAgentStatus: "idle" | "running" | "done" | "error";
+  previewAgentStatus: "idle" | "running" | "done" | "error";
+  error: string;
+}) {
+  const [open, setOpen] = useState(true);
+  const [typedIntro, setTypedIntro] = useState("");
+
+  React.useEffect(() => {
+    if (!intro) {
+      setTypedIntro("");
+      return;
+    }
+    if (intro.length < typedIntro.length) {
+      setTypedIntro(intro);
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const push = () => {
+      setTypedIntro((prev) => {
+        if (prev.length >= intro.length) {
+          return prev;
+        }
+        const nextLength = Math.min(intro.length, prev.length + 2);
+        return intro.slice(0, nextLength);
+      });
+      timer = setTimeout(push, 18);
+    };
+    timer = setTimeout(push, 18);
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [intro, typedIntro.length]);
+
+  return (
+    <Card className="bg-[#141414] border-[#2d2d2d] mb-4">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CardHeader className="pb-2">
+          <CollapsibleTrigger asChild>
+            <button className="w-full flex items-center justify-between text-left">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[#8B5CF6]" />
+                Agent 协同解析
+              </CardTitle>
+              {open ? (
+                <ChevronDown className="w-4 h-4 text-[#7a7a7a]" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-[#7a7a7a]" />
+              )}
+            </button>
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="space-y-3">
+            <div className="p-3 rounded-md bg-[#1b1b1b] border border-[#2d2d2d]">
+              {typedIntro ? (
+                <CompactMarkdownView text={typedIntro} />
+              ) : (
+                <p className="text-[11px] leading-4 text-[#a9a9a9]">
+                  {isStreaming ? "Agent 正在基于本体配置生成语义转义说明..." : "等待说明输出"}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge className={cn("text-[10px] border-0", statusClassName(parsedAgentStatus))}>
+                Agent-解析结果：{statusLabel(parsedAgentStatus)}
+              </Badge>
+              <Badge className={cn("text-[10px] border-0", statusClassName(previewAgentStatus))}>
+                Agent-语义预览：{statusLabel(previewAgentStatus)}
+              </Badge>
+            </div>
+            {error && <p className="text-[11px] text-[#f87171]">{error}</p>}
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+}
+
+function statusLabel(status: "idle" | "running" | "done" | "error") {
+  if (status === "running") return "执行中";
+  if (status === "done") return "已完成";
+  if (status === "error") return "失败";
+  return "待执行";
+}
+
+function statusClassName(status: "idle" | "running" | "done" | "error") {
+  if (status === "running") return "bg-[#F59E0B]/20 text-[#F59E0B]";
+  if (status === "done") return "bg-[#10B981]/20 text-[#10B981]";
+  if (status === "error") return "bg-[#EF4444]/20 text-[#EF4444]";
+  return "bg-[#3b3b3b] text-[#a0a0a0]";
+}
+
+function CompactMarkdownView({ text }: { text: string }) {
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+  let inCodeBlock = false;
+  let codeBuffer: string[] = [];
+
+  const flushCode = () => {
+    if (codeBuffer.length === 0) return;
+    elements.push(
+      <pre
+        key={`code-${elements.length}`}
+        className="my-1 rounded bg-[#111111] border border-[#2d2d2d] p-2 text-[10px] leading-4 text-[#93F2B2] whitespace-pre-wrap break-words font-mono"
+      >
+        {codeBuffer.join("\n")}
+      </pre>
+    );
+    codeBuffer = [];
+  };
+
+  lines.forEach((line, index) => {
+    if (line.trim().startsWith("```")) {
+      if (inCodeBlock) {
+        flushCode();
+        inCodeBlock = false;
+      } else {
+        inCodeBlock = true;
+      }
+      return;
+    }
+
+    if (inCodeBlock) {
+      codeBuffer.push(line);
+      return;
+    }
+
+    if (!line.trim()) {
+      elements.push(<div key={`gap-${index}`} className="h-1" />);
+      return;
+    }
+
+    const heading3 = line.match(/^###\s+(.*)$/);
+    if (heading3) {
+      elements.push(
+        <p key={`h3-${index}`} className="text-[11px] leading-4 text-[#d9d9d9] font-semibold">
+          {renderInlineMarkdown(heading3[1])}
+        </p>
+      );
+      return;
+    }
+
+    const heading2 = line.match(/^##\s+(.*)$/);
+    if (heading2) {
+      elements.push(
+        <p key={`h2-${index}`} className="text-[11px] leading-4 text-white font-semibold">
+          {renderInlineMarkdown(heading2[1])}
+        </p>
+      );
+      return;
+    }
+
+    const heading1 = line.match(/^#\s+(.*)$/);
+    if (heading1) {
+      elements.push(
+        <p key={`h1-${index}`} className="text-[12px] leading-4 text-white font-semibold">
+          {renderInlineMarkdown(heading1[1])}
+        </p>
+      );
+      return;
+    }
+
+    const listItem = line.match(/^[-*]\s+(.*)$/);
+    if (listItem) {
+      elements.push(
+        <p key={`ul-${index}`} className="text-[11px] leading-4 text-[#cfcfcf] pl-3 relative">
+          <span className="absolute left-0 top-0 text-[#8B5CF6]">•</span>
+          {renderInlineMarkdown(listItem[1])}
+        </p>
+      );
+      return;
+    }
+
+    const orderedItem = line.match(/^(\d+)\.\s+(.*)$/);
+    if (orderedItem) {
+      elements.push(
+        <p key={`ol-${index}`} className="text-[11px] leading-4 text-[#cfcfcf]">
+          <span className="text-[#8B5CF6] mr-1">{orderedItem[1]}.</span>
+          {renderInlineMarkdown(orderedItem[2])}
+        </p>
+      );
+      return;
+    }
+
+    elements.push(
+      <p key={`p-${index}`} className="text-[11px] leading-4 text-[#cfcfcf] whitespace-pre-wrap break-words">
+        {renderInlineMarkdown(line)}
+      </p>
+    );
+  });
+
+  if (inCodeBlock) {
+    flushCode();
+  }
+
+  return <div className="space-y-1">{elements}</div>;
+}
+
+function renderInlineMarkdown(text: string) {
+  const segments = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g).filter(Boolean);
+  return segments.map((segment, index) => {
+    if (segment.startsWith("`") && segment.endsWith("`")) {
+      return (
+        <code key={index} className="px-1 py-0.5 rounded bg-[#111111] text-[#93F2B2] font-mono text-[10px]">
+          {segment.slice(1, -1)}
+        </code>
+      );
+    }
+    if (segment.startsWith("**") && segment.endsWith("**")) {
+      return (
+        <strong key={index} className="text-white font-semibold">
+          {segment.slice(2, -2)}
+        </strong>
+      );
+    }
+    if (segment.startsWith("*") && segment.endsWith("*")) {
+      return (
+        <em key={index} className="text-[#e0e0e0]">
+          {segment.slice(1, -1)}
+        </em>
+      );
+    }
+    return <React.Fragment key={index}>{segment}</React.Fragment>;
+  });
 }

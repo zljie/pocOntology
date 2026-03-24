@@ -23,8 +23,15 @@ interface SelectionStore {
     | {
         query: string;
         generatedAt: string;
+        semanticScenario?: string;
         rdf: string;
         swrl: string;
+        dsl?: string;
+        graphqlTemplate?: string;
+        templateVars?: Record<string, string>;
+        schemaVersion?: string;
+        reasoning?: string;
+        source?: "rule" | "llm";
       }
     | null;
 
@@ -45,8 +52,15 @@ interface SelectionStore {
   setSemanticQueryPreview: (preview: {
     query: string;
     generatedAt: string;
+    semanticScenario?: string;
     rdf: string;
     swrl: string;
+    dsl?: string;
+    graphqlTemplate?: string;
+    templateVars?: Record<string, string>;
+    schemaVersion?: string;
+    reasoning?: string;
+    source?: "rule" | "llm";
   }) => void;
   clearSemanticQueryPreview: () => void;
   clearSelection: () => void;
