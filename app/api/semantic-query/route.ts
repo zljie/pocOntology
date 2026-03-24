@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 const BASE_URL = process.env.MINIMAX_ANTHROPIC_BASE_URL || "https://api.minimaxi.com/anthropic";
 const MODEL = process.env.MINIMAX_MODEL || "MiniMax-M2.7";
 const CASE_EXAMPLES = [
@@ -452,7 +456,7 @@ export async function POST(req: NextRequest) {
 
   const payload = {
     model: MODEL,
-    max_tokens: 1800,
+    max_tokens: 10000,
     temperature: 0.3,
     system: "你是本体建模与语义查询专家，擅长把自然语言转换为语义网络与规则表达。",
     messages: [

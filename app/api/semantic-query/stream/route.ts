@@ -1,5 +1,9 @@
 import { NextRequest } from "next/server";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
 const BASE_URL = process.env.MINIMAX_ANTHROPIC_BASE_URL || "https://api.minimaxi.com/anthropic";
 const MODEL = process.env.MINIMAX_MODEL || "MiniMax-M2.7";
 
@@ -75,10 +79,10 @@ function fallbackPreview(query: string) {
   };
 }
 
-async function requestAgentText(apiKey: string, prompt: string) {
+async function requestAgentText(apiKey: string, prompt: string, maxTokens = 1200) {
   const payload = {
     model: MODEL,
-    max_tokens: 1200,
+    max_tokens: maxTokens,
     temperature: 0.3,
     system: "你是图书馆本体语义建模专家。",
     messages: [
@@ -104,11 +108,14 @@ async function requestAgentText(apiKey: string, prompt: string) {
   if (!response.ok) {
     const errorText = await response.text();
     console.error("LLM Request Failed:", response.status, errorText);
-    return "";
+    return { text: "", stopReason: "http_error" as const };
   }
 
   const result = await response.json();
-  return extractTextBlocks(result?.content || []);
+  return {
+    text: extractTextBlocks(result?.content || []),
+    stopReason: typeof result?.stop_reason === "string" ? result.stop_reason : "",
+  };
 }
 
 function splitTextByChunk(text: string, size = 20) {
@@ -144,30 +151,33 @@ export async function POST(req: NextRequest) {
         const parsedPrompt = `仅返回 JSON，不要额外文本。输出 parsedResult 字段，schema: {"parsedResult":{"action":{"id":"string","name":"string","displayName":"string","layer":"KINETIC"},"entities":[],"suggestedProperties":[],"output":[]}}。输入：${query}`;
         const previewPrompt = `仅返回 JSON，不要额外文本。输出 schema: {"semanticScenario":"string","rdf":"string","owl":"string","swrl":"string","dsl":"string","graphqlTemplate":"string","templateVars":{"k":"v"}}。输入：${query}`;
 
+        const introResponse = apiKey ? await requestAgentText(apiKey, introPrompt, 10000) : { text: "", stopReason: "" };
         const introText =
-          apiKey
-            ? (await requestAgentText(apiKey, introPrompt)) ||
-              "我将先根据本体层级识别动作、实体和属性，再由并行 Agent 分别生成解析结果与语义化查询语句预览。"
-            : "我将先根据本体层级识别动作、实体和属性，再由并行 Agent 分别生成解析结果与语义化查询语句预览。";
+          introResponse.text ||
+          "我将先根据本体层级识别动作、实体和属性，再由并行 Agent 分别生成解析结果与语义化查询语句预览。";
+        const finalIntroText =
+          introResponse.stopReason === "max_tokens"
+            ? `${introText}\n\n（提示：本次说明已达到模型输出长度上限，可能存在截断。你可以在下方继续追问“继续/补充细节”。）`
+            : introText;
 
-        const introChunks = splitTextByChunk(introText, 18);
+        const introChunks = splitTextByChunk(finalIntroText, 18);
         for (const chunk of introChunks) {
           send(controller, { type: "intro_delta", delta: chunk });
           await sleep(30);
         }
-        send(controller, { type: "intro_done", intro: introText });
+        send(controller, { type: "intro_done", intro: finalIntroText });
 
         const parsedTask = (async () => {
           if (!apiKey) return fallbackParsedResult(query);
-          const parsedText = await requestAgentText(apiKey, parsedPrompt);
-          const parsedJson = safeParseJSON(parsedText);
+          const parsedResponse = await requestAgentText(apiKey, parsedPrompt, 1800);
+          const parsedJson = safeParseJSON(parsedResponse.text);
           return parsedJson?.parsedResult || fallbackParsedResult(query);
         })();
 
         const previewTask = (async () => {
           if (!apiKey) return fallbackPreview(query);
-          const previewText = await requestAgentText(apiKey, previewPrompt);
-          const previewJson = safeParseJSON(previewText);
+          const previewResponse = await requestAgentText(apiKey, previewPrompt, 1800);
+          const previewJson = safeParseJSON(previewResponse.text);
           const fallback = fallbackPreview(query);
           return {
             semanticScenario: previewJson?.semanticScenario || fallback.semanticScenario,
