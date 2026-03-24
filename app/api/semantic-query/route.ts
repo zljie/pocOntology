@@ -171,6 +171,20 @@ lib:Loan_${barcode} a lib:Loan ;
     lib:loanStatus "RETURNED" .`;
 }
 
+function fallbackOwl() {
+  return `Prefix: lib: <http://example.org/library#>
+Prefix: owl: <http://www.w3.org/2002/07/owl#>
+Prefix: rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+Ontology: <http://example.org/library>
+
+Class: lib:ReturnEvent
+    SubClassOf: lib:Event
+
+Class: lib:Loan
+    SubClassOf: owl:Thing`;
+}
+
 function fallbackSwrl() {
   return `lib:Rule_归还状态同步 a lib:BusinessRule ;
     lib:if """
@@ -391,6 +405,7 @@ JSON schema:
 {
   "semanticScenario": "string",
   "rdf": "string",
+  "owl": "string",
   "swrl": "string",
   "dsl": "string",
   "graphqlTemplate": "string",
@@ -407,13 +422,14 @@ JSON schema:
 要求:
 1) semanticScenario 用中文，描述业务语义场景与对象关系。
 2) rdf 使用 Turtle 风格，前缀使用 lib: 和 xsd:。
-3) swrl 输出可执行的规则表达。
-4) dsl 使用简洁动作语法，表达“语义到执行”的意图。
-5) graphqlTemplate 输出可执行 GraphQL 模板，变量使用 $var 形式。
-6) templateVars 提供默认变量值，便于直接发起调用。
-7) 对于“还书、条码号”场景，必须围绕 ReturnEvent、Loan、Holding 一致性表达。
-8) parsedResult 必须可直接用于界面展示（解析结果、识别的实体、提取的参数、将生成的字段）。
-9) 如果输入是案例外内容，务必保证 parsedResult 四个部分完整且可用。`;
+3) owl 提供基于 OWL Manchester 语法的本体结构描述，表达该场景依赖的核心本体定义（如类、属性及层级关系）。
+4) swrl 输出可执行的规则表达。
+5) dsl 使用简洁动作语法，表达“语义到执行”的意图。
+6) graphqlTemplate 输出可执行 GraphQL 模板，变量使用 $var 形式。
+7) templateVars 提供默认变量值，便于直接发起调用。
+8) 对于“还书、条码号”场景，必须围绕 ReturnEvent、Loan、Holding 一致性表达。
+9) parsedResult 必须可直接用于界面展示（解析结果、识别的实体、提取的参数、将生成的字段）。
+10) 如果输入是案例外内容，务必保证 parsedResult 四个部分完整且可用。`;
 }
 
 export async function POST(req: NextRequest) {
@@ -454,6 +470,7 @@ export async function POST(req: NextRequest) {
     headers: {
       "Content-Type": "application/json",
       "x-api-key": apiKey,
+      "Authorization": `Bearer ${apiKey}`,
       "anthropic-version": "2023-06-01"
     },
     body: JSON.stringify(payload),
@@ -462,6 +479,7 @@ export async function POST(req: NextRequest) {
 
   if (!response.ok) {
     const errorText = await response.text();
+    console.error("LLM Request Failed in /api/semantic-query:", response.status, errorText);
     return NextResponse.json(
       { error: "MiniMax 调用失败", detail: errorText.slice(0, 800) },
       { status: 502 }
@@ -477,6 +495,7 @@ export async function POST(req: NextRequest) {
 
   const semanticScenario = (parsed?.semanticScenario || "").trim() || fallbackSemanticScenario(query);
   const rdf = (parsed?.rdf || "").trim() || rdfFromText || fallbackRdf(query);
+  const owl = (parsed?.owl || "").trim() || fallbackOwl();
   const swrl = (parsed?.swrl || "").trim() || swrlFromText || fallbackSwrl();
   const parsedResult = normalizeServerParsedResult(parsed?.parsedResult, query);
   const dsl =
@@ -495,6 +514,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     semanticScenario,
     rdf,
+    owl,
     swrl,
     dsl,
     graphqlTemplate,

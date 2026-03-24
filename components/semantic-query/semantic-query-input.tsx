@@ -1,6 +1,9 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
+import { Streamdown } from "streamdown";
+import { mermaid } from "@streamdown/mermaid";
+import { cjk } from "@streamdown/cjk";
 import {
   Search,
   Send,
@@ -32,6 +35,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   useOntologyStore,
   useSelectionStore,
@@ -176,6 +186,7 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
   const [parsedAgentStatus, setParsedAgentStatus] = useState<"idle" | "running" | "done" | "error">("idle");
   const [previewAgentStatus, setPreviewAgentStatus] = useState<"idle" | "running" | "done" | "error">("idle");
   const [agentError, setAgentError] = useState("");
+  const [isOrchestrationModalOpen, setIsOrchestrationModalOpen] = useState(false);
   const latestParseRequestRef = React.useRef(0);
 
   const { actionTypes, objectTypes, businessRules } = useOntologyStore();
@@ -209,6 +220,7 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
     setParsedAgentStatus("running");
     setPreviewAgentStatus("running");
     setAgentError("");
+    setIsOrchestrationModalOpen(true);
     const normalizedQuery = query.trim();
     try {
       const result = performParsing(normalizedQuery, actionTypes, objectTypes, businessRules);
@@ -245,6 +257,7 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
             generatedAt: new Date().toISOString(),
             semanticScenario: event.preview.semanticScenario || localPreview.semanticScenario,
             rdf: event.preview.rdf || localPreview.rdf,
+            owl: event.preview.owl || localPreview.owl,
             swrl: event.preview.swrl || localPreview.swrl,
             dsl: event.preview.dsl || localPreview.dsl,
             graphqlTemplate: event.preview.graphqlTemplate || localPreview.graphqlTemplate,
@@ -283,6 +296,7 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
             generatedAt: new Date().toISOString(),
             semanticScenario: llmPreview.semanticScenario || localPreview.semanticScenario,
             rdf: llmPreview.rdf || localPreview.rdf,
+            owl: llmPreview.owl || localPreview.owl,
             swrl: llmPreview.swrl || localPreview.swrl,
             dsl: llmPreview.dsl || localPreview.dsl,
             graphqlTemplate: llmPreview.graphqlTemplate || localPreview.graphqlTemplate,
@@ -340,15 +354,29 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
     <div className={cn("flex flex-col h-full", className)}>
       {/* Header */}
       <div className="p-4 border-b border-[#2d2d2d]">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#8B5CF6] to-[#06B6D4] flex items-center justify-center">
-            <Sparkles className="w-4 h-4 text-white" />
+        <div className="flex items-center gap-2 mb-3 justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#8B5CF6] to-[#06B6D4] flex items-center justify-center">
+                <Sparkles className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-white">语义查询端口</h2>
+                <p className="text-[10px] text-[#6b6b6b]">自然语言 → 本体映射</p>
+              </div>
+            </div>
+            
+            {(agentIntro || parsedAgentStatus !== "idle") && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-8 text-[11px] bg-[#1a1a1a] border-[#2d2d2d] hover:bg-[#2d2d2d] text-[#a0a0a0] flex items-center gap-1.5"
+                onClick={() => setIsOrchestrationModalOpen(true)}
+              >
+                <Sparkles className="w-3 h-3 text-[#8B5CF6]" />
+                查看 Agent 解析过程
+              </Button>
+            )}
           </div>
-          <div>
-            <h2 className="text-sm font-semibold text-white">语义查询端口</h2>
-            <p className="text-[10px] text-[#6b6b6b]">自然语言 → 本体映射</p>
-          </div>
-        </div>
 
         {/* Input */}
         <div className="relative">
@@ -389,19 +417,15 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
       {/* Result */}
       <ScrollArea className="flex-1">
         <div className="p-4">
-          {(isStreaming ||
-            agentIntro ||
-            agentError ||
-            parsedAgentStatus !== "idle" ||
-            previewAgentStatus !== "idle") && (
-            <AgentOrchestrationPanel
-              isStreaming={isStreaming}
-              intro={agentIntro}
-              parsedAgentStatus={parsedAgentStatus}
-              previewAgentStatus={previewAgentStatus}
-              error={agentError}
-            />
-          )}
+          <AgentOrchestrationModal
+            isOpen={isOrchestrationModalOpen}
+            onOpenChange={setIsOrchestrationModalOpen}
+            isStreaming={isStreaming}
+            intro={agentIntro}
+            parsedAgentStatus={parsedAgentStatus}
+            previewAgentStatus={previewAgentStatus}
+            error={agentError}
+          />
           {parsedResult ? (
             <ParseResultDisplay
               result={parsedResult}
@@ -699,6 +723,7 @@ function deriveHighlightedObjectTypeIds(result: ParsedIntent, objectTypes: Objec
 async function requestLLMSemanticPreview(query: string): Promise<{
   semanticScenario?: string;
   rdf?: string;
+  owl?: string;
   swrl?: string;
   dsl?: string;
   graphqlTemplate?: string;
@@ -723,6 +748,7 @@ async function requestLLMSemanticPreview(query: string): Promise<{
     return {
       semanticScenario: data?.semanticScenario,
       rdf: data?.rdf,
+      owl: data?.owl,
       swrl: data?.swrl,
       dsl: data?.dsl,
       graphqlTemplate: data?.graphqlTemplate,
@@ -998,6 +1024,33 @@ lib:Rule_逾期滞纳金 a lib:BusinessRule ;
         ?fine lib:reason "逾期3天以上" .
     """ .`;
 
+  const owl =
+    result.action.id === "action-return"
+      ? `Prefix: lib: <http://example.org/library#>
+Prefix: owl: <http://www.w3.org/2002/07/owl#>
+Prefix: rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+Ontology: <http://example.org/library>
+
+Class: lib:ReturnEvent
+    SubClassOf: lib:Event
+    Annotations: rdfs:label "归还事件"
+
+Class: lib:Loan
+    SubClassOf: owl:Thing`
+      : `Prefix: lib: <http://example.org/library#>
+Prefix: owl: <http://www.w3.org/2002/07/owl#>
+Prefix: rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+Ontology: <http://example.org/library>
+
+Class: lib:BorrowingEvent
+    SubClassOf: lib:Event
+    Annotations: rdfs:label "借阅事件"
+
+Class: lib:Book
+    SubClassOf: owl:Thing`;
+
   return {
     query,
     generatedAt: new Date().toISOString(),
@@ -1008,6 +1061,7 @@ lib:Rule_逾期滞纳金 a lib:BusinessRule ;
         ? `系统识别为“续借”场景：针对指定借阅记录延长应还日期，并执行续借规则校验。`
         : `系统识别为“借阅”场景：基于读者与图书对象创建借阅事件，并派生应还时间与规则约束。`,
     rdf,
+    owl,
     swrl,
     dsl,
     graphqlTemplate,
@@ -1297,20 +1351,23 @@ function EmptyParseResult() {
   );
 }
 
-function AgentOrchestrationPanel({
+function AgentOrchestrationModal({
+  isOpen,
+  onOpenChange,
   isStreaming,
   intro,
   parsedAgentStatus,
   previewAgentStatus,
   error,
 }: {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
   isStreaming: boolean;
   intro: string;
   parsedAgentStatus: "idle" | "running" | "done" | "error";
   previewAgentStatus: "idle" | "running" | "done" | "error";
   error: string;
 }) {
-  const [open, setOpen] = useState(true);
   const [typedIntro, setTypedIntro] = useState("");
 
   React.useEffect(() => {
@@ -1340,47 +1397,48 @@ function AgentOrchestrationPanel({
   }, [intro, typedIntro.length]);
 
   return (
-    <Card className="bg-[#141414] border-[#2d2d2d] mb-4">
-      <Collapsible open={open} onOpenChange={setOpen}>
-        <CardHeader className="pb-2">
-          <CollapsibleTrigger asChild>
-            <button className="w-full flex items-center justify-between text-left">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-[#8B5CF6]" />
-                Agent 协同解析
-              </CardTitle>
-              {open ? (
-                <ChevronDown className="w-4 h-4 text-[#7a7a7a]" />
-              ) : (
-                <ChevronRight className="w-4 h-4 text-[#7a7a7a]" />
-              )}
-            </button>
-          </CollapsibleTrigger>
-        </CardHeader>
-        <CollapsibleContent>
-          <CardContent className="space-y-3">
-            <div className="p-3 rounded-md bg-[#1b1b1b] border border-[#2d2d2d]">
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-[#141414] border-[#2d2d2d] text-white sm:max-w-[800px] md:max-w-[900px] h-[85vh] flex flex-col gap-0 p-0 overflow-hidden">
+        <DialogHeader className="p-4 border-b border-[#2d2d2d] flex-shrink-0">
+          <DialogTitle className="text-sm flex items-center gap-2 m-0">
+            <Sparkles className="w-4 h-4 text-[#8B5CF6]" />
+            Agent 协同解析
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            展示语义解析 Agent 的流式输出过程和状态。
+          </DialogDescription>
+        </DialogHeader>
+        
+        <ScrollArea className="flex-1 overflow-y-auto">
+          <div className="p-4 space-y-4">
+            <div className="p-3 rounded-md bg-[#1b1b1b] border border-[#2d2d2d] w-full max-w-full overflow-hidden">
               {typedIntro ? (
-                <CompactMarkdownView text={typedIntro} />
+                <Streamdown 
+                  isAnimating={isStreaming} 
+                  className="text-[13px] leading-relaxed text-[#d8d8d8] prose prose-invert max-w-none w-full"
+                  plugins={{ mermaid, cjk }}
+                >
+                  {typedIntro}
+                </Streamdown>
               ) : (
-                <p className="text-[11px] leading-4 text-[#a9a9a9]">
+                <p className="text-[12px] leading-4 text-[#a9a9a9]">
                   {isStreaming ? "Agent 正在基于本体配置生成语义转义说明..." : "等待说明输出"}
                 </p>
               )}
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge className={cn("text-[10px] border-0", statusClassName(parsedAgentStatus))}>
+            <div className="flex items-center gap-2 flex-wrap pb-2">
+              <Badge className={cn("text-[11px] border-0", statusClassName(parsedAgentStatus))}>
                 Agent-解析结果：{statusLabel(parsedAgentStatus)}
               </Badge>
-              <Badge className={cn("text-[10px] border-0", statusClassName(previewAgentStatus))}>
+              <Badge className={cn("text-[11px] border-0", statusClassName(previewAgentStatus))}>
                 Agent-语义预览：{statusLabel(previewAgentStatus)}
               </Badge>
             </div>
-            {error && <p className="text-[11px] text-[#f87171]">{error}</p>}
-          </CardContent>
-        </CollapsibleContent>
-      </Collapsible>
-    </Card>
+            {error && <p className="text-[12px] text-[#f87171]">{error}</p>}
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1396,138 +1454,4 @@ function statusClassName(status: "idle" | "running" | "done" | "error") {
   if (status === "done") return "bg-[#10B981]/20 text-[#10B981]";
   if (status === "error") return "bg-[#EF4444]/20 text-[#EF4444]";
   return "bg-[#3b3b3b] text-[#a0a0a0]";
-}
-
-function CompactMarkdownView({ text }: { text: string }) {
-  const lines = text.split("\n");
-  const elements: React.ReactNode[] = [];
-  let inCodeBlock = false;
-  let codeBuffer: string[] = [];
-
-  const flushCode = () => {
-    if (codeBuffer.length === 0) return;
-    elements.push(
-      <pre
-        key={`code-${elements.length}`}
-        className="my-1 rounded bg-[#111111] border border-[#2d2d2d] p-2 text-[10px] leading-4 text-[#93F2B2] whitespace-pre-wrap break-words font-mono"
-      >
-        {codeBuffer.join("\n")}
-      </pre>
-    );
-    codeBuffer = [];
-  };
-
-  lines.forEach((line, index) => {
-    if (line.trim().startsWith("```")) {
-      if (inCodeBlock) {
-        flushCode();
-        inCodeBlock = false;
-      } else {
-        inCodeBlock = true;
-      }
-      return;
-    }
-
-    if (inCodeBlock) {
-      codeBuffer.push(line);
-      return;
-    }
-
-    if (!line.trim()) {
-      elements.push(<div key={`gap-${index}`} className="h-1" />);
-      return;
-    }
-
-    const heading3 = line.match(/^###\s+(.*)$/);
-    if (heading3) {
-      elements.push(
-        <p key={`h3-${index}`} className="text-[11px] leading-4 text-[#d9d9d9] font-semibold">
-          {renderInlineMarkdown(heading3[1])}
-        </p>
-      );
-      return;
-    }
-
-    const heading2 = line.match(/^##\s+(.*)$/);
-    if (heading2) {
-      elements.push(
-        <p key={`h2-${index}`} className="text-[11px] leading-4 text-white font-semibold">
-          {renderInlineMarkdown(heading2[1])}
-        </p>
-      );
-      return;
-    }
-
-    const heading1 = line.match(/^#\s+(.*)$/);
-    if (heading1) {
-      elements.push(
-        <p key={`h1-${index}`} className="text-[12px] leading-4 text-white font-semibold">
-          {renderInlineMarkdown(heading1[1])}
-        </p>
-      );
-      return;
-    }
-
-    const listItem = line.match(/^[-*]\s+(.*)$/);
-    if (listItem) {
-      elements.push(
-        <p key={`ul-${index}`} className="text-[11px] leading-4 text-[#cfcfcf] pl-3 relative">
-          <span className="absolute left-0 top-0 text-[#8B5CF6]">•</span>
-          {renderInlineMarkdown(listItem[1])}
-        </p>
-      );
-      return;
-    }
-
-    const orderedItem = line.match(/^(\d+)\.\s+(.*)$/);
-    if (orderedItem) {
-      elements.push(
-        <p key={`ol-${index}`} className="text-[11px] leading-4 text-[#cfcfcf]">
-          <span className="text-[#8B5CF6] mr-1">{orderedItem[1]}.</span>
-          {renderInlineMarkdown(orderedItem[2])}
-        </p>
-      );
-      return;
-    }
-
-    elements.push(
-      <p key={`p-${index}`} className="text-[11px] leading-4 text-[#cfcfcf] whitespace-pre-wrap break-words">
-        {renderInlineMarkdown(line)}
-      </p>
-    );
-  });
-
-  if (inCodeBlock) {
-    flushCode();
-  }
-
-  return <div className="space-y-1">{elements}</div>;
-}
-
-function renderInlineMarkdown(text: string) {
-  const segments = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g).filter(Boolean);
-  return segments.map((segment, index) => {
-    if (segment.startsWith("`") && segment.endsWith("`")) {
-      return (
-        <code key={index} className="px-1 py-0.5 rounded bg-[#111111] text-[#93F2B2] font-mono text-[10px]">
-          {segment.slice(1, -1)}
-        </code>
-      );
-    }
-    if (segment.startsWith("**") && segment.endsWith("**")) {
-      return (
-        <strong key={index} className="text-white font-semibold">
-          {segment.slice(2, -2)}
-        </strong>
-      );
-    }
-    if (segment.startsWith("*") && segment.endsWith("*")) {
-      return (
-        <em key={index} className="text-[#e0e0e0]">
-          {segment.slice(1, -1)}
-        </em>
-      );
-    }
-    return <React.Fragment key={index}>{segment}</React.Fragment>;
-  });
 }

@@ -70,6 +70,9 @@ export function SemanticQueryPreviewPanel({ className }: { className?: string })
                 <TabsTrigger value="rdf" className="text-xs data-[state=active]:bg-[#2d2d2d]">
                   RDF / Turtle
                 </TabsTrigger>
+                <TabsTrigger value="owl" className="text-xs data-[state=active]:bg-[#2d2d2d]">
+                  OWL / 本体
+                </TabsTrigger>
                 <TabsTrigger value="swrl" className="text-xs data-[state=active]:bg-[#2d2d2d]">
                   SWRL Rule
                 </TabsTrigger>
@@ -94,6 +97,14 @@ export function SemanticQueryPreviewPanel({ className }: { className?: string })
               <ScrollArea className="h-full rounded-md border border-[#2d2d2d] bg-[#0d0d0d]">
                 <pre className="p-3 text-[11px] leading-5 text-[#9fd0ff] whitespace-pre-wrap break-words">
                   {semanticQueryPreview.rdf}
+                </pre>
+              </ScrollArea>
+            </TabsContent>
+
+            <TabsContent value="owl" className="mt-2 px-3 pb-3 flex-1 min-h-0">
+              <ScrollArea className="h-full rounded-md border border-[#2d2d2d] bg-[#0d0d0d]">
+                <pre className="p-3 text-[11px] leading-5 text-[#ffb86c] whitespace-pre-wrap break-words">
+                  {semanticQueryPreview.owl || "未生成 OWL 描述"}
                 </pre>
               </ScrollArea>
             </TabsContent>

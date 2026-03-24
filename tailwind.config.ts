@@ -7,6 +7,9 @@ const config: Config = {
     "./components/**/*.{ts,tsx}",
     "./app/**/*.{ts,tsx}",
     "./src/**/*.{ts,tsx}",
+    "./node_modules/streamdown/dist/**/*.{js,mjs}",
+    "./node_modules/@streamdown/mermaid/dist/*.js",
+    "./node_modules/@streamdown/cjk/dist/*.js",
   ],
   theme: {
     container: {

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "streamdown/styles.css";
 
 export const metadata: Metadata = {
   title: "Ontology Design Simulator | Palantir-style Digital Twin Modeling",

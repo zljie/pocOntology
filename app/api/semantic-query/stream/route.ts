@@ -55,6 +55,7 @@ function fallbackPreview(query: string) {
     return {
       semanticScenario: "系统将归还语义转义为 ReturnEvent，关联 Loan 与 Holding 并更新状态。",
       rdf: `lib:Event_Return_001 a lib:ReturnEvent ;\n  lib:updatesLoan lib:Loan_${barcode} .`,
+      owl: `Class: lib:ReturnEvent\n  SubClassOf: lib:Event\n  Annotations: rdfs:label "归还事件"`,
       swrl: `lib:Rule_归还状态同步 a lib:BusinessRule ;\n  lib:then """ ?loan lib:loanStatus "RETURNED" . """ .`,
       dsl: `ACTION ReturnBook WITH Holding.barcode="${barcode}"`,
       graphqlTemplate:
@@ -65,6 +66,7 @@ function fallbackPreview(query: string) {
   return {
     semanticScenario: "系统将借阅语义转义为 BorrowingEvent，绑定读者与馆藏并生成借阅记录。",
     rdf: `lib:Event_Loan_001 a lib:BorrowingEvent ;\n  lib:object lib:Book_目标图书 .`,
+    owl: `Class: lib:BorrowingEvent\n  SubClassOf: lib:Event\n  Annotations: rdfs:label "借阅事件"`,
     swrl: `lib:Rule_借阅可用性 a lib:BusinessRule ;\n  lib:then """ ?loan lib:loanStatus "ACTIVE" . """ .`,
     dsl: `ACTION CheckoutBook WITH Book.title="目标图书"`,
     graphqlTemplate:
@@ -92,6 +94,7 @@ async function requestAgentText(apiKey: string, prompt: string) {
     headers: {
       "Content-Type": "application/json",
       "x-api-key": apiKey,
+      "Authorization": `Bearer ${apiKey}`,
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify(payload),
@@ -99,6 +102,8 @@ async function requestAgentText(apiKey: string, prompt: string) {
   });
 
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error("LLM Request Failed:", response.status, errorText);
     return "";
   }
 
@@ -135,9 +140,9 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const introPrompt = `请用中文向用户解释：基于当前图书馆本体模型，会如何把输入语句转换为语义对象、参数、规则与查询执行结构。输入：${query}`;
+        const introPrompt = `请用中文向用户解释：基于当前图书馆本体模型，会如何把输入语句转换为语义对象、参数、规则与查询执行结构。当需要输出框架图、架构图或流程图时，请强制使用 mermaid 语法（以 \`\`\`mermaid 开头）。输入：${query}`;
         const parsedPrompt = `仅返回 JSON，不要额外文本。输出 parsedResult 字段，schema: {"parsedResult":{"action":{"id":"string","name":"string","displayName":"string","layer":"KINETIC"},"entities":[],"suggestedProperties":[],"output":[]}}。输入：${query}`;
-        const previewPrompt = `仅返回 JSON，不要额外文本。输出 schema: {"semanticScenario":"string","rdf":"string","swrl":"string","dsl":"string","graphqlTemplate":"string","templateVars":{"k":"v"}}。输入：${query}`;
+        const previewPrompt = `仅返回 JSON，不要额外文本。输出 schema: {"semanticScenario":"string","rdf":"string","owl":"string","swrl":"string","dsl":"string","graphqlTemplate":"string","templateVars":{"k":"v"}}。输入：${query}`;
 
         const introText =
           apiKey
@@ -167,6 +172,7 @@ export async function POST(req: NextRequest) {
           return {
             semanticScenario: previewJson?.semanticScenario || fallback.semanticScenario,
             rdf: previewJson?.rdf || fallback.rdf,
+            owl: previewJson?.owl || fallback.owl,
             swrl: previewJson?.swrl || fallback.swrl,
             dsl: previewJson?.dsl || fallback.dsl,
             graphqlTemplate: previewJson?.graphqlTemplate || fallback.graphqlTemplate,

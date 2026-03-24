@@ -25,6 +25,7 @@ interface SelectionStore {
         generatedAt: string;
         semanticScenario?: string;
         rdf: string;
+        owl?: string;
         swrl: string;
         dsl?: string;
         graphqlTemplate?: string;
@@ -54,6 +55,7 @@ interface SelectionStore {
     generatedAt: string;
     semanticScenario?: string;
     rdf: string;
+    owl?: string;
     swrl: string;
     dsl?: string;
     graphqlTemplate?: string;
