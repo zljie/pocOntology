@@ -35,13 +35,8 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
 import {
   useOntologyStore,
   useSelectionStore,
@@ -186,7 +181,9 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
   const [parsedAgentStatus, setParsedAgentStatus] = useState<"idle" | "running" | "done" | "error">("idle");
   const [previewAgentStatus, setPreviewAgentStatus] = useState<"idle" | "running" | "done" | "error">("idle");
   const [agentError, setAgentError] = useState("");
-  const [isOrchestrationModalOpen, setIsOrchestrationModalOpen] = useState(false);
+  const [isAgentDrawerOpen, setIsAgentDrawerOpen] = useState(false);
+  const [isAgentFollowEnabled, setIsAgentFollowEnabled] = useState(true);
+  const [agentChatDraft, setAgentChatDraft] = useState("");
   const latestParseRequestRef = React.useRef(0);
 
   const { actionTypes, objectTypes, businessRules } = useOntologyStore();
@@ -200,10 +197,11 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
   const { openRightPanel } = useUIStore();
 
   // 解析查询
-  const parseQuery = useCallback(async () => {
+  const parseQueryText = useCallback(async (rawQuery: string) => {
     const requestId = latestParseRequestRef.current + 1;
     latestParseRequestRef.current = requestId;
-    if (!query.trim()) {
+    const normalizedQuery = rawQuery?.toString?.().trim?.() || "";
+    if (!normalizedQuery) {
       setParsedResult(null);
       clearSemanticHighlightedNodeIds();
       clearSemanticQueryPreview();
@@ -220,8 +218,7 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
     setParsedAgentStatus("running");
     setPreviewAgentStatus("running");
     setAgentError("");
-    setIsOrchestrationModalOpen(true);
-    const normalizedQuery = query.trim();
+    setIsAgentDrawerOpen(true);
     try {
       const result = performParsing(normalizedQuery, actionTypes, objectTypes, businessRules);
       setParsedResult(result);
@@ -237,9 +234,7 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
           return;
         }
         if (event.type === "intro_done") {
-          if (!agentIntro) {
-            setAgentIntro(String(event.intro || ""));
-          }
+          setAgentIntro(String(event.intro || ""));
           return;
         }
         if (event.type === "parsed_result" && event.parsedResult) {
@@ -323,7 +318,6 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
       setIsLoading(false);
     }
   }, [
-    query,
     actionTypes,
     objectTypes,
     businessRules,
@@ -331,10 +325,19 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
     clearSemanticHighlightedNodeIds,
     setSemanticQueryPreview,
     clearSemanticQueryPreview,
-    agentIntro,
-    parsedAgentStatus,
-    previewAgentStatus,
   ]);
+
+  const parseQuery = useCallback(async () => {
+    await parseQueryText(query);
+  }, [parseQueryText, query]);
+
+  const sendAgentChat = useCallback(async () => {
+    const nextQuery = agentChatDraft.trim();
+    if (!nextQuery) return;
+    setQuery(nextQuery);
+    setAgentChatDraft("");
+    await parseQueryText(nextQuery);
+  }, [agentChatDraft, parseQueryText]);
 
   React.useEffect(() => {
     return () => {
@@ -370,10 +373,10 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
                 variant="outline" 
                 size="sm" 
                 className="h-8 text-[11px] bg-[#1a1a1a] border-[#2d2d2d] hover:bg-[#2d2d2d] text-[#a0a0a0] flex items-center gap-1.5"
-                onClick={() => setIsOrchestrationModalOpen(true)}
+                onClick={() => setIsAgentDrawerOpen(true)}
               >
                 <Sparkles className="w-3 h-3 text-[#8B5CF6]" />
-                查看 Agent 解析过程
+                打开 Agent 对话
               </Button>
             )}
           </div>
@@ -417,14 +420,19 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
       {/* Result */}
       <ScrollArea className="flex-1">
         <div className="p-4">
-          <AgentOrchestrationModal
-            isOpen={isOrchestrationModalOpen}
-            onOpenChange={setIsOrchestrationModalOpen}
+          <AgentChatDrawer
+            isOpen={isAgentDrawerOpen}
+            onOpenChange={setIsAgentDrawerOpen}
+            isFollowEnabled={isAgentFollowEnabled}
+            onFollowChange={setIsAgentFollowEnabled}
             isStreaming={isStreaming}
             intro={agentIntro}
             parsedAgentStatus={parsedAgentStatus}
             previewAgentStatus={previewAgentStatus}
             error={agentError}
+            draft={agentChatDraft}
+            onDraftChange={setAgentChatDraft}
+            onSend={sendAgentChat}
           />
           {parsedResult ? (
             <ParseResultDisplay
@@ -1351,82 +1359,63 @@ function EmptyParseResult() {
   );
 }
 
-function AgentOrchestrationModal({
+function AgentChatDrawer({
   isOpen,
   onOpenChange,
+  isFollowEnabled,
+  onFollowChange,
   isStreaming,
   intro,
   parsedAgentStatus,
   previewAgentStatus,
   error,
+  draft,
+  onDraftChange,
+  onSend,
 }: {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  isFollowEnabled: boolean;
+  onFollowChange: (enabled: boolean) => void;
   isStreaming: boolean;
   intro: string;
   parsedAgentStatus: "idle" | "running" | "done" | "error";
   previewAgentStatus: "idle" | "running" | "done" | "error";
   error: string;
+  draft: string;
+  onDraftChange: (value: string) => void;
+  onSend: () => void;
 }) {
-  const [typedIntro, setTypedIntro] = useState("");
+  const bottomRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
-    if (!intro) {
-      setTypedIntro("");
-      return;
-    }
-    if (intro.length < typedIntro.length) {
-      setTypedIntro(intro);
-      return;
-    }
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const push = () => {
-      setTypedIntro((prev) => {
-        if (prev.length >= intro.length) {
-          return prev;
-        }
-        const nextLength = Math.min(intro.length, prev.length + 2);
-        return intro.slice(0, nextLength);
-      });
-      timer = setTimeout(push, 18);
-    };
-    timer = setTimeout(push, 18);
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [intro, typedIntro.length]);
+    if (!isOpen) return;
+    if (!isFollowEnabled) return;
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [intro, isOpen, isFollowEnabled]);
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#141414] border-[#2d2d2d] text-white sm:max-w-[800px] md:max-w-[900px] h-[85vh] flex flex-col gap-0 p-0 overflow-hidden">
-        <DialogHeader className="p-4 border-b border-[#2d2d2d] flex-shrink-0">
-          <DialogTitle className="text-sm flex items-center gap-2 m-0">
-            <Sparkles className="w-4 h-4 text-[#8B5CF6]" />
-            Agent 协同解析
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            展示语义解析 Agent 的流式输出过程和状态。
-          </DialogDescription>
-        </DialogHeader>
-        
-        <ScrollArea className="flex-1 overflow-y-auto">
-          <div className="p-4 space-y-4">
-            <div className="p-3 rounded-md bg-[#1b1b1b] border border-[#2d2d2d] w-full max-w-full overflow-hidden">
-              {typedIntro ? (
-                <Streamdown 
-                  isAnimating={isStreaming} 
-                  className="text-[13px] leading-relaxed text-[#d8d8d8] prose prose-invert max-w-none w-full"
-                  plugins={{ mermaid, cjk }}
-                >
-                  {typedIntro}
-                </Streamdown>
-              ) : (
-                <p className="text-[12px] leading-4 text-[#a9a9a9]">
-                  {isStreaming ? "Agent 正在基于本体配置生成语义转义说明..." : "等待说明输出"}
-                </p>
-              )}
+    <Sheet open={isOpen} onOpenChange={onOpenChange} showOverlay={false}>
+      <SheetContent
+        side="right"
+        showClose
+        onOpenChange={onOpenChange}
+        className="z-[60] w-[560px] sm:w-[620px] bg-[#0d0d0d] border-[#2d2d2d] p-0"
+      >
+        <div className="h-full flex flex-col">
+          <div className="px-4 py-3 border-b border-[#2d2d2d] flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[#8B5CF6]" />
+              <h3 className="text-sm font-semibold text-white">Agent 对话</h3>
             </div>
-            <div className="flex items-center gap-2 flex-wrap pb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-[#a0a0a0]">跟随</span>
+              <Switch checked={isFollowEnabled} onCheckedChange={onFollowChange} />
+            </div>
+          </div>
+
+          <div className="px-4 pt-3">
+            <div className="flex items-center gap-2 flex-wrap">
               <Badge className={cn("text-[11px] border-0", statusClassName(parsedAgentStatus))}>
                 Agent-解析结果：{statusLabel(parsedAgentStatus)}
               </Badge>
@@ -1434,11 +1423,58 @@ function AgentOrchestrationModal({
                 Agent-语义预览：{statusLabel(previewAgentStatus)}
               </Badge>
             </div>
-            {error && <p className="text-[12px] text-[#f87171]">{error}</p>}
           </div>
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
+
+          <ScrollArea className="flex-1 mt-3">
+            <div className="px-4 pb-6 space-y-3">
+              <div className="p-3 rounded-md bg-[#141414] border border-[#2d2d2d] w-full max-w-full overflow-hidden">
+                {intro ? (
+                  <Streamdown
+                    isAnimating={isStreaming}
+                    className="text-[13px] leading-relaxed text-[#d8d8d8] prose prose-invert max-w-none w-full"
+                    plugins={{ mermaid, cjk }}
+                  >
+                    {intro}
+                  </Streamdown>
+                ) : (
+                  <p className="text-[12px] leading-4 text-[#a9a9a9]">
+                    {isStreaming ? "Agent 正在基于本体配置生成语义转义说明..." : "等待说明输出"}
+                  </p>
+                )}
+              </div>
+              {error && <p className="text-[12px] text-[#f87171]">{error}</p>}
+              <div ref={bottomRef} />
+            </div>
+          </ScrollArea>
+
+          <div className="border-t border-[#2d2d2d] p-3">
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="继续输入，追问或补充条件…"
+                value={draft}
+                onChange={(e) => onDraftChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    onSend();
+                  }
+                }}
+                className="h-9 bg-[#141414] border-[#2d2d2d] focus:border-[#8B5CF6] text-sm"
+              />
+              <Button
+                size="sm"
+                className="h-9 bg-[#8B5CF6] hover:bg-[#7C3AED] text-white"
+                onClick={onSend}
+                disabled={!draft.trim()}
+              >
+                <Send className="w-3.5 h-3.5 mr-1" />
+                发送
+              </Button>
+            </div>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
