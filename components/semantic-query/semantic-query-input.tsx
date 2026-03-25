@@ -193,6 +193,8 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
     clearSemanticHighlightedNodeIds,
     setSemanticQueryPreview,
     clearSemanticQueryPreview,
+    setSemanticParsedResult,
+    setSemanticResourcePreview,
   } = useSelectionStore();
   const { openRightPanel } = useUIStore();
 
@@ -203,6 +205,7 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
     const normalizedQuery = rawQuery?.toString?.().trim?.() || "";
     if (!normalizedQuery) {
       setParsedResult(null);
+      setSemanticParsedResult(null);
       clearSemanticHighlightedNodeIds();
       clearSemanticQueryPreview();
       setAgentIntro("");
@@ -222,6 +225,7 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
     try {
       const result = performParsing(normalizedQuery, actionTypes, objectTypes, businessRules);
       setParsedResult(result);
+      setSemanticParsedResult(result);
       setSemanticHighlightedNodeIds(deriveHighlightedObjectTypeIds(result, objectTypes, normalizedQuery));
       const localPreview = generateSemanticPreview(result, normalizedQuery);
       setSemanticQueryPreview(localPreview);
@@ -240,10 +244,36 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
         if (event.type === "parsed_result" && event.parsedResult) {
           const normalizedLLMResult = normalizeLLMParsedResult(event.parsedResult, result);
           setParsedResult(normalizedLLMResult);
+          setSemanticParsedResult(normalizedLLMResult);
           setSemanticHighlightedNodeIds(
             deriveHighlightedObjectTypeIds(normalizedLLMResult, objectTypes, normalizedQuery)
           );
           setParsedAgentStatus("done");
+
+          // 触发资源预测 Agent
+          setSemanticResourcePreview({ resources: [], dataStructures: [], status: "running" });
+          selectActionType(normalizedLLMResult.action.id);
+          openRightPanel();
+          fetch("/api/semantic-query-predict-resources", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ parsedResult: normalizedLLMResult }),
+          })
+            .then(res => res.json())
+            .then(data => {
+              if (data.resources || data.dataStructures) {
+                setSemanticResourcePreview({
+                  resources: data.resources || [],
+                  dataStructures: data.dataStructures || [],
+                  status: "done",
+                });
+              } else {
+                setSemanticResourcePreview({ resources: [], dataStructures: [], status: "error" });
+              }
+            })
+            .catch(() => {
+              setSemanticResourcePreview({ resources: [], dataStructures: [], status: "error" });
+            });
           return;
         }
         if (event.type === "preview_result" && event.preview) {
@@ -278,10 +308,36 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
         if (llmPreview?.parsedResult) {
           const normalizedLLMResult = normalizeLLMParsedResult(llmPreview.parsedResult, result);
           setParsedResult(normalizedLLMResult);
+          setSemanticParsedResult(normalizedLLMResult);
           setSemanticHighlightedNodeIds(
             deriveHighlightedObjectTypeIds(normalizedLLMResult, objectTypes, normalizedQuery)
           );
           setParsedAgentStatus("done");
+
+          // 触发资源预测 Agent
+          setSemanticResourcePreview({ resources: [], dataStructures: [], status: "running" });
+          selectActionType(normalizedLLMResult.action.id);
+          openRightPanel();
+          fetch("/api/semantic-query-predict-resources", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ parsedResult: normalizedLLMResult }),
+          })
+            .then(res => res.json())
+            .then(data => {
+              if (data.resources || data.dataStructures) {
+                setSemanticResourcePreview({
+                  resources: data.resources || [],
+                  dataStructures: data.dataStructures || [],
+                  status: "done",
+                });
+              } else {
+                setSemanticResourcePreview({ resources: [], dataStructures: [], status: "error" });
+              }
+            })
+            .catch(() => {
+              setSemanticResourcePreview({ resources: [], dataStructures: [], status: "error" });
+            });
         } else {
           setParsedAgentStatus("error");
         }
@@ -308,6 +364,31 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
       } else {
         if (parsedAgentStatus === "running") {
           setParsedAgentStatus("done");
+
+          // 触发资源预测 Agent (Fallback 场景)
+          setSemanticResourcePreview({ resources: [], dataStructures: [], status: "running" });
+          selectActionType(result.action.id);
+          openRightPanel();
+          fetch("/api/semantic-query-predict-resources", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ parsedResult: result }),
+          })
+            .then(res => res.json())
+            .then(data => {
+              if (data.resources || data.dataStructures) {
+                setSemanticResourcePreview({
+                  resources: data.resources || [],
+                  dataStructures: data.dataStructures || [],
+                  status: "done",
+                });
+              } else {
+                setSemanticResourcePreview({ resources: [], dataStructures: [], status: "error" });
+              }
+            })
+            .catch(() => {
+              setSemanticResourcePreview({ resources: [], dataStructures: [], status: "error" });
+            });
         }
         if (previewAgentStatus === "running") {
           setPreviewAgentStatus("done");
@@ -343,8 +424,9 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
     return () => {
       clearSemanticHighlightedNodeIds();
       clearSemanticQueryPreview();
+      setSemanticParsedResult(null);
     };
-  }, [clearSemanticHighlightedNodeIds, clearSemanticQueryPreview]);
+  }, [clearSemanticHighlightedNodeIds, clearSemanticQueryPreview, setSemanticParsedResult]);
 
   // 处理回车键
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -1123,7 +1205,7 @@ function ParseResultDisplay({
                 className="text-[10px] h-7 border-[#10B981]/30 text-[#10B981] hover:bg-[#10B981]/10"
                 onClick={() => onSelectAction(result.action.id)}
               >
-                查看详情
+                查看资源推演
                 <ArrowRight className="w-3 h-3 ml-1" />
               </Button>
             </div>
@@ -1407,10 +1489,10 @@ function AgentChatDrawer({
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-[#8B5CF6]" />
               <h3 className="text-sm font-semibold text-white">Agent 对话</h3>
-            </div>
-            <div className="flex items-center gap-2">
               <span className="text-[11px] text-[#a0a0a0]">跟随</span>
               <Switch checked={isFollowEnabled} onCheckedChange={onFollowChange} />
+            </div>
+            <div className="flex items-center gap-2">
             </div>
           </div>
 

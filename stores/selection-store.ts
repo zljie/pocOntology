@@ -35,6 +35,12 @@ interface SelectionStore {
         source?: "rule" | "llm";
       }
     | null;
+  semanticParsedResult: any | null;
+  semanticResourcePreview: {
+    resources: { name: string; type: string; description: string }[];
+    dataStructures: { name: string; fields: { name: string; type: string; description: string }[] }[];
+    status: "idle" | "running" | "done" | "error";
+  } | null;
 
   // Selection Actions
   selectLayer: (layer: OntologyLayer | 'ALL') => void;
@@ -65,6 +71,12 @@ interface SelectionStore {
     source?: "rule" | "llm";
   }) => void;
   clearSemanticQueryPreview: () => void;
+  setSemanticParsedResult: (result: any | null) => void;
+  setSemanticResourcePreview: (preview: {
+    resources: { name: string; type: string; description: string }[];
+    dataStructures: { name: string; fields: { name: string; type: string; description: string }[] }[];
+    status: "idle" | "running" | "done" | "error";
+  } | null) => void;
   clearSelection: () => void;
   clearAll: () => void;
 }
@@ -84,6 +96,8 @@ export const useSelectionStore = create<SelectionStore>((set) => ({
   selectedEdgeId: null,
   semanticHighlightedNodeIds: [],
   semanticQueryPreview: null,
+  semanticParsedResult: null,
+  semanticResourcePreview: null,
 
   // Layer selection
   selectLayer: (layer) =>
@@ -220,6 +234,16 @@ export const useSelectionStore = create<SelectionStore>((set) => ({
       semanticQueryPreview: null,
     }),
 
+  setSemanticParsedResult: (result) =>
+    set({
+      semanticParsedResult: result,
+    }),
+
+  setSemanticResourcePreview: (preview) =>
+    set({
+      semanticResourcePreview: preview,
+    }),
+
   clearSelection: () =>
     set({
       selectedObjectTypeId: null,
@@ -232,6 +256,8 @@ export const useSelectionStore = create<SelectionStore>((set) => ({
       selectedAnalysisInsightId: null,
       semanticHighlightedNodeIds: [],
       semanticQueryPreview: null,
+      semanticParsedResult: null,
+      semanticResourcePreview: null,
     }),
 
   clearAll: () =>
@@ -249,5 +275,7 @@ export const useSelectionStore = create<SelectionStore>((set) => ({
       selectedEdgeId: null,
       semanticHighlightedNodeIds: [],
       semanticQueryPreview: null,
+      semanticParsedResult: null,
+      semanticResourcePreview: null,
     }),
 }));

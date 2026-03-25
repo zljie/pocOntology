@@ -6,6 +6,7 @@ import { ThreePanelLayout } from "@/components/layout/three-panel-layout";
 import { OntologyLayerPanel } from "@/components/ontology-layers/ontology-layer-panel";
 import { OntologyCanvas } from "@/components/graph-canvas/ontology-canvas";
 import { PropertyEditorPanel } from "@/components/property-editor/property-editor-panel";
+import { RightSemanticQueryPanel } from "@/components/semantic-query/right-semantic-query-panel";
 import { ImportDialog } from "@/components/proposal-system/import-dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useUIStore } from "@/stores";
@@ -20,7 +21,12 @@ export default function HomePage() {
         <ThreePanelLayout
           leftPanel={<OntologyLayerPanel />}
           centerPanel={<OntologyCanvas />}
-          rightPanel={<PropertyEditorPanel />}
+          rightPanel={
+            <>
+              <PropertyEditorPanel />
+              <RightSemanticQueryPanel />
+            </>
+          }
         />
         <ImportDialog
           open={showImportDialog}
