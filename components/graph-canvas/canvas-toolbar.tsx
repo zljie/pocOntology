@@ -8,6 +8,7 @@ import {
   ZoomOut,
   Maximize2,
   LayoutGrid,
+  Share2,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -52,7 +53,7 @@ function ToolButton({ icon: Icon, label, active, onClick }: ToolButtonProps) {
 }
 
 export function CanvasToolbar() {
-  const { showGrid, showMinimap, toggleGrid, toggleMinimap } = useUIStore();
+  const { showGrid, showMinimap, canvasViewMode, toggleGrid, toggleMinimap, toggleCanvasViewMode } = useUIStore();
 
   return (
     <div className="bg-[#1a1a18] border border-[#2d2d2d] rounded-lg p-1 flex items-center gap-0.5">
@@ -78,6 +79,15 @@ export function CanvasToolbar() {
       <div className="w-px h-5 bg-[#2d2d2d] mx-1" />
       
       <ToolButton icon={LayoutGrid} label="自动布局" />
+
+      <div className="w-px h-5 bg-[#2d2d2d] mx-1" />
+
+      <ToolButton
+        icon={Share2}
+        label={canvasViewMode === "EDITOR" ? "切换到图谱模式" : "切换到编辑模式"}
+        active={canvasViewMode === "KNOWLEDGE_GRAPH"}
+        onClick={toggleCanvasViewMode}
+      />
     </div>
   );
 }

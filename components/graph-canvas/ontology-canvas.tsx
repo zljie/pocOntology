@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useMemo } from "react";
+import dynamic from "next/dynamic";
 import {
   ReactFlow,
   Background,
@@ -15,7 +16,6 @@ import {
   type NodeTypes,
   type EdgeTypes,
   BackgroundVariant,
-  Panel,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useOntologyStore } from "@/stores";
@@ -28,6 +28,11 @@ import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { ObjectType, LinkType } from "@/lib/types/ontology";
 import { generateId } from "@/lib/utils";
+
+const OntologyKnowledgeGraph = dynamic(
+  () => import("./ontology-knowledge-graph").then((m) => m.OntologyKnowledgeGraph),
+  { ssr: false }
+);
 
 const nodeTypes: NodeTypes = {
   objectType: ObjectTypeNode,
@@ -60,8 +65,16 @@ function generateLayout(objectTypes: ObjectType[]): Record<string, { x: number; 
 
 export function OntologyCanvas() {
   const { objectTypes, linkTypes, addObjectType, addLinkType } = useOntologyStore();
-  const { selectedNodeId, semanticHighlightedNodeIds, selectNode, selectEdge, clearAll } = useSelectionStore();
-  const { showMinimap, showGrid, openRightPanel } = useUIStore();
+  const {
+    selectedNodeId,
+    semanticHighlightedNodeIds,
+    selectNode,
+    selectEdge,
+    selectObjectType,
+    selectLinkType,
+    clearAll,
+  } = useSelectionStore();
+  const { showMinimap, showGrid, canvasViewMode, openRightPanel } = useUIStore();
 
   // Convert object types to nodes
   const initialNodes: Node[] = useMemo(() => {
@@ -190,17 +203,19 @@ export function OntologyCanvas() {
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
       selectNode(node.id);
+      selectObjectType(node.id);
       openRightPanel();
     },
-    [selectNode, openRightPanel]
+    [openRightPanel, selectNode, selectObjectType]
   );
 
   const onEdgeClick = useCallback(
     (_: React.MouseEvent, edge: Edge) => {
       selectEdge(edge.id);
+      selectLinkType(edge.id);
       openRightPanel();
     },
-    [selectEdge, openRightPanel]
+    [openRightPanel, selectEdge, selectLinkType]
   );
 
   const onPaneClick = useCallback(() => {
@@ -226,60 +241,66 @@ export function OntologyCanvas() {
   }, [objectTypes, addObjectType]);
 
   return (
-    <div className="w-full h-full">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onNodeClick={onNodeClick}
-        onEdgeClick={onEdgeClick}
-        onPaneClick={onPaneClick}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        fitView
-        snapToGrid={showGrid}
-        snapGrid={[16, 16]}
-        defaultEdgeOptions={{
-          type: "linkType",
-          animated: true,
-        }}
-        proOptions={{ hideAttribution: true }}
-      >
-        {showGrid && (
-          <Background
-            variant={BackgroundVariant.Dots}
-            gap={16}
-            size={1}
-            color="#2d2d2d"
-          />
-        )}
-        
-        <Controls 
-          className="!bg-[#1a1a18] !border-[#2d2d2d] !rounded-lg"
-          showZoom={true}
-          showFitView={true}
-          showInteractive={false}
-        />
-        
-        {showMinimap && (
-          <MiniMap
+    <div className="relative w-full h-full">
+      {canvasViewMode === "KNOWLEDGE_GRAPH" ? (
+        <OntologyKnowledgeGraph />
+      ) : (
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onNodeClick={onNodeClick}
+          onEdgeClick={onEdgeClick}
+          onPaneClick={onPaneClick}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          fitView
+          snapToGrid={showGrid}
+          snapGrid={[16, 16]}
+          defaultEdgeOptions={{
+            type: "linkType",
+            animated: true,
+          }}
+          proOptions={{ hideAttribution: true }}
+        >
+          {showGrid && (
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={16}
+              size={1}
+              color="#2d2d2d"
+            />
+          )}
+
+          <Controls
             className="!bg-[#1a1a18] !border-[#2d2d2d] !rounded-lg"
-            nodeColor={(node) => {
-              if (node.data?.selected) return "#5b8def";
-              if (node.data?.highlighted) return "#8B5CF6";
-              return "#2d2d2d";
-            }}
-            maskColor="rgba(0, 0, 0, 0.8)"
+            showZoom={true}
+            showFitView={true}
+            showInteractive={false}
           />
-        )}
 
-        <Panel position="top-right" className="!m-4">
-          <CanvasToolbar />
-        </Panel>
+          {showMinimap && (
+            <MiniMap
+              className="!bg-[#1a1a18] !border-[#2d2d2d] !rounded-lg"
+              nodeColor={(node) => {
+                if (node.data?.selected) return "#5b8def";
+                if (node.data?.highlighted) return "#8B5CF6";
+                return "#2d2d2d";
+              }}
+              maskColor="rgba(0, 0, 0, 0.8)"
+            />
+          )}
+        </ReactFlow>
+      )}
 
-        <Panel position="bottom-right" className="!m-4">
+      <div className="absolute top-4 right-4 z-10">
+        <CanvasToolbar />
+      </div>
+
+      {canvasViewMode === "EDITOR" && (
+        <div className="absolute bottom-4 right-4 z-10">
           <Button
             size="sm"
             variant="outline"
@@ -289,19 +310,17 @@ export function OntologyCanvas() {
             <Plus className="w-4 h-4 mr-1" />
             添加节点
           </Button>
-        </Panel>
+        </div>
+      )}
 
-        {objectTypes.length === 0 && (
-          <Panel position="top-center" className="!mt-8">
-            <div className="bg-[#1a1a18] border border-[#2d2d2d] rounded-lg p-6 text-center">
-              <p className="text-[#6b6b6b] mb-2">画布为空</p>
-              <p className="text-xs text-[#4a4a4a]">
-                点击"添加节点"或从左侧面板创建对象类型
-              </p>
-            </div>
-          </Panel>
-        )}
-      </ReactFlow>
+      {canvasViewMode === "EDITOR" && objectTypes.length === 0 && (
+        <div className="absolute top-8 left-1/2 -translate-x-1/2 z-10">
+          <div className="bg-[#1a1a18] border border-[#2d2d2d] rounded-lg p-6 text-center">
+            <p className="text-[#6b6b6b] mb-2">画布为空</p>
+            <p className="text-xs text-[#4a4a4a]">点击&quot;添加节点&quot;或从左侧面板创建对象类型</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
