@@ -41,6 +41,12 @@ type SandboxResult = {
           linkTypes?: string[];
           businessRules?: string[];
         };
+        missingHints?: {
+          actionTypes?: string[];
+          objectTypes?: string[];
+          linkTypes?: string[];
+          businessRules?: string[];
+        };
       }>;
     }>;
   };
@@ -115,6 +121,35 @@ export function BusinessScenarioSandbox() {
   const gaps = result?.gaps;
 
   const pct = (ratio?: number) => `${Math.round(Math.max(0, Math.min(1, ratio ?? 0)) * 100)}%`;
+  const normalize = useMemo(() => (arr?: string[]) => (Array.isArray(arr) ? arr.filter(Boolean) : []), []);
+
+  function renderTagRow(label: string, items: string[], tone: "used" | "missing") {
+    const normalized = normalize(items);
+    return (
+      <div className="flex items-start gap-2">
+        <div className="text-[11px] text-[#9a9a9a] shrink-0 w-[44px]">{label}</div>
+        {normalized.length ? (
+          <div className="flex flex-wrap gap-1">
+            {normalized.slice(0, 24).map((x) => (
+              <Badge
+                key={`${label}-${x}`}
+                className={
+                  tone === "used"
+                    ? "bg-[#111827] text-[#93c5fd] border border-[#1f2937]"
+                    : "bg-[#3f1d1d] text-[#fca5a5] border border-[#7f1d1d]"
+                }
+              >
+                {x}
+              </Badge>
+            ))}
+            {normalized.length > 24 ? <span className="text-[11px] text-[#6b6b6b]">…</span> : null}
+          </div>
+        ) : (
+          <div className="text-[11px] text-[#6b6b6b]">—</div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -304,6 +339,31 @@ export function BusinessScenarioSandbox() {
                                     </div>
                                   ))}
                                   {s.steps.length > 6 && <div className="text-[#9a9a9a]">…</div>}
+                                </div>
+                              )}
+
+                              <div className="mt-3 space-y-2">
+                                <div className="text-[11px] text-[#9a9a9a]">已用要素</div>
+                                <div className="space-y-1">
+                                  {renderTagRow("动作", s.coverageHints?.actionTypes || [], "used")}
+                                  {renderTagRow("对象", s.coverageHints?.objectTypes || [], "used")}
+                                  {renderTagRow("关系", s.coverageHints?.linkTypes || [], "used")}
+                                  {renderTagRow("规则", s.coverageHints?.businessRules || [], "used")}
+                                </div>
+                              </div>
+
+                              {(normalize(s.missingHints?.actionTypes).length ||
+                                normalize(s.missingHints?.objectTypes).length ||
+                                normalize(s.missingHints?.linkTypes).length ||
+                                normalize(s.missingHints?.businessRules).length) && (
+                                <div className="mt-3 space-y-2">
+                                  <div className="text-[11px] text-[#9a9a9a]">为了覆盖建议补充</div>
+                                  <div className="space-y-1">
+                                    {renderTagRow("动作", s.missingHints?.actionTypes || [], "missing")}
+                                    {renderTagRow("对象", s.missingHints?.objectTypes || [], "missing")}
+                                    {renderTagRow("关系", s.missingHints?.linkTypes || [], "missing")}
+                                    {renderTagRow("规则", s.missingHints?.businessRules || [], "missing")}
+                                  </div>
                                 </div>
                               )}
                             </Card>

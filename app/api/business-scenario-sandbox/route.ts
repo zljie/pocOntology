@@ -228,6 +228,18 @@ function buildAgentPrompt(digest: any) {
 4) 场景覆盖面：每个分组至少包含“主流程 + 失败/例外 + 运营/治理 + 观测/审计 + 批处理/离线”中的 3 类。
 5) 去重：不要输出同义重复场景（例如“借书”与“办理借阅”只能保留一个）。
 
+输出长度护栏（必须遵守，用于防止超长被截断）：
+1) groups 数量：必须在 5–7 之间。
+2) 每个 group 的 scenarios 数量：必须在 4–8 之间；优先覆盖更多 ActionType，而不是堆砌同类场景。
+3) steps：每个场景必须 4–6 步；每步不超过 24 个中文字符（或 50 个英文字符）。
+4) 字段长度上限：
+   - theme ≤ 30 字
+   - title ≤ 18 字
+   - rationale ≤ 60 字（务必含“边界说明：不包含…”）
+   - goal/trigger ≤ 40 字
+5) coverageHints 与 missingHints 的数组上限：每类最多 6 个；不要重复；不要输出本体词表全文；不要在字符串里换行。
+6) 如果你预计会超长：删减低优先级场景（重复/边缘/过细粒度），保持每个 ActionType 至少出现一次。
+
 ${libraryGuidance}
 
 输出严格为 JSON，不要输出任何额外文本。
@@ -259,6 +271,12 @@ ${libraryGuidance}
               "objectTypes": ["string (ObjectType.apiName)"],
               "linkTypes": ["string (LinkType.apiName)"],
               "businessRules": ["string (BusinessRule.apiName)"]
+            },
+            "missingHints": {
+              "actionTypes": ["string (优先填 ActionType.apiName；如需新增用 NEW:<CandidateApiName>)"],
+              "objectTypes": ["string (优先填 ObjectType.apiName；如需新增用 NEW:<CandidateApiName>)"],
+              "linkTypes": ["string (优先填 LinkType.apiName；如需新增用 NEW:<CandidateApiName>)"],
+              "businessRules": ["string (优先填 BusinessRule.apiName；如需新增用 NEW:<CandidateApiName>)"]
             }
           }
         ]
@@ -269,6 +287,10 @@ ${libraryGuidance}
 
 覆盖标注规则：
 - coverageHints.* 只能使用输入中存在的 apiName；不知道就用空数组，不要编造。
+- missingHints.* 用于“为了覆盖需要补充什么”：
+  - 如果本体里已经有对应元素，优先引用其 apiName
+  - 如果本体里没有，使用 NEW:<CandidateApiName> 形式给出建议新增项（CandidateApiName 用 CamelCase）
+  - COVERED 时 missingHints 四类都必须为空数组
 - coverageStatus 判定（从严）：
   - COVERED：coverageHints.actionTypes 至少 1 个，且 coverageHints.objectTypes 至少 1 个；steps 与目标一致
   - PARTIAL：能对齐对象/规则，但关键动作缺失或步骤需要新增动作类型
@@ -353,6 +375,89 @@ function computeCoverageAndGaps(digest: any, pyramid: any) {
   return { coverage, gaps };
 }
 
+function normalizePyramid(pyramid: any) {
+  const groups = Array.isArray(pyramid?.groups) ? pyramid.groups : [];
+  const normalizedGroups = groups.map((g: any) => {
+    const scenarios = Array.isArray(g?.scenarios) ? g.scenarios : [];
+    const normalizedScenarios = scenarios.map((s: any) => {
+      const coverageHints = s?.coverageHints || {};
+      const missingHints = s?.missingHints || {};
+      const coverageStatus = s?.coverageStatus === "COVERED" || s?.coverageStatus === "PARTIAL" || s?.coverageStatus === "GAP"
+        ? s.coverageStatus
+        : "PARTIAL";
+      const normalized = {
+        ...s,
+        coverageStatus,
+        coverageHints: {
+          actionTypes: normalizeStringArray(coverageHints?.actionTypes),
+          objectTypes: normalizeStringArray(coverageHints?.objectTypes),
+          linkTypes: normalizeStringArray(coverageHints?.linkTypes),
+          businessRules: normalizeStringArray(coverageHints?.businessRules),
+        },
+        missingHints: {
+          actionTypes: normalizeStringArray(missingHints?.actionTypes),
+          objectTypes: normalizeStringArray(missingHints?.objectTypes),
+          linkTypes: normalizeStringArray(missingHints?.linkTypes),
+          businessRules: normalizeStringArray(missingHints?.businessRules),
+        },
+      };
+      if (normalized.coverageStatus === "COVERED") {
+        normalized.missingHints = { actionTypes: [], objectTypes: [], linkTypes: [], businessRules: [] };
+      }
+      return normalized;
+    });
+    return { ...g, scenarios: normalizedScenarios };
+  });
+  return { ...pyramid, groups: normalizedGroups };
+}
+
+async function requestScenarioSandbox(params: {
+  apiKey: string;
+  prompt: string;
+  maxTokens: number;
+  temperature: number;
+}) {
+  const payload = {
+    model: MODEL,
+    max_tokens: params.maxTokens,
+    temperature: params.temperature,
+    system: "你是咨询式结构化推演专家，擅长 MECE 与金字塔表达，把本体抽象为可执行业务场景清单。",
+    messages: [{ role: "user", content: [{ type: "text", text: params.prompt }] }],
+  };
+
+  const response = await fetch(buildMessagesUrl(BASE_URL), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": params.apiKey,
+      "Authorization": `Bearer ${params.apiKey}`,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    return {
+      ok: false as const,
+      status: response.status,
+      errorText,
+    };
+  }
+
+  const result = await response.json();
+  const text = extractTextBlocks(result?.content || []);
+  const parsed = safeParseJSON(text) || {};
+  const pyramid = normalizePyramid(parsed?.pyramid || {});
+
+  return {
+    ok: true as const,
+    text,
+    pyramid,
+  };
+}
+
 export async function POST(req: NextRequest) {
   const apiKey = process.env.MINIMAX_API_KEY || process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -371,39 +476,47 @@ export async function POST(req: NextRequest) {
   }
 
   const prompt = buildAgentPrompt(digest);
-  const payload = {
-    model: MODEL,
-    max_tokens: 10000,
-    temperature: 0.4,
-    system: "你是咨询式结构化推演专家，擅长 MECE 与金字塔表达，把本体抽象为可执行业务场景清单。",
-    messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
-  };
 
-  const response = await fetch(buildMessagesUrl(BASE_URL), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "Authorization": `Bearer ${apiKey}`,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify(payload),
-    cache: "no-store",
+  const primary = await requestScenarioSandbox({
+    apiKey,
+    prompt,
+    maxTokens: 12000,
+    temperature: 0.3,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
+  if (!primary.ok) {
     return NextResponse.json(
-      { error: "MiniMax 调用失败", detail: errorText.slice(0, 800) },
+      { error: "MiniMax 调用失败", detail: primary.errorText.slice(0, 800) },
       { status: 502 }
     );
   }
 
-  const result = await response.json();
-  const text = extractTextBlocks(result?.content || []);
-  const parsed = safeParseJSON(text) || {};
+  let pyramid = primary.pyramid;
+  let text = primary.text;
 
-  const pyramid = parsed?.pyramid || {};
+  const primaryGroups = Array.isArray(pyramid?.groups) ? pyramid.groups : [];
+  const looksTruncated = typeof text === "string" && text.length > 0 && !primaryGroups.length;
+  if (looksTruncated) {
+    const retryPrompt =
+      `${prompt}\n\n` +
+      `补救模式（你上次输出可能因为过长被截断）：\n` +
+      `- 严格压缩：groups=5；每组 scenarios=4；steps=4；rationale<=45字；goal/trigger<=30字\n` +
+      `- coverageHints 与 missingHints 每类最多 4 个\n` +
+      `- 只输出 JSON，不要包含任何解释/前后缀\n`;
+
+    const retry = await requestScenarioSandbox({
+      apiKey,
+      prompt: retryPrompt,
+      maxTokens: 6000,
+      temperature: 0.2,
+    });
+
+    if (retry.ok) {
+      pyramid = retry.pyramid;
+      text = retry.text;
+    }
+  }
+
   const groups = Array.isArray(pyramid?.groups) ? pyramid.groups : [];
   const totalGroups = groups.length;
   const totalScenarios = groups.reduce((sum: number, g: any) => sum + (Array.isArray(g?.scenarios) ? g.scenarios.length : 0), 0);
