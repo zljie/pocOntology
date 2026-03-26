@@ -177,17 +177,62 @@ function buildOntologyDigest(ontology: any) {
 }
 
 function buildAgentPrompt(digest: any) {
-  return `你是“业务场景穷举Agent”（本体业务模型设计器的场景沙盘）。你的目标是回答：当前本体业务模型，最多能推演出哪些可执行的业务场景。
+  const actionNames: string[] = Array.isArray(digest?.actionTypes)
+    ? digest.actionTypes.map((a: any) => String(a?.apiName || "")).filter(Boolean)
+    : [];
+  const objectNames: string[] = Array.isArray(digest?.objectTypes)
+    ? digest.objectTypes.map((o: any) => String(o?.apiName || "")).filter(Boolean)
+    : [];
+  const linkNames: string[] = Array.isArray(digest?.linkTypes)
+    ? digest.linkTypes.map((l: any) => String(l?.apiName || "")).filter(Boolean)
+    : [];
+  const ruleNames: string[] = Array.isArray(digest?.businessRules)
+    ? digest.businessRules.map((r: any) => String(r?.apiName || "")).filter(Boolean)
+    : [];
 
-方法论约束：
-1) MECE：分组互斥、整体尽量穷尽；不要出现语义重复或交叉分组。
-2) 麦肯锡金字塔：先给出顶层主题（一句话），再给出 5-9 个二级分组（并给出 rationale），每个分组下给出可执行子场景清单。
-3) “可执行场景”的最低标准：必须能映射到本体中的对象/关系/动作/规则中的至少一个元素，并能写出动作链（steps）。
-4) 场景应覆盖：主流程 + 例外/失败路径 + 运营/治理/合规 + 观测/审计 + 批处理/离线 + 多角色协作（如果模型支持）。
+  const isLibraryDomain =
+    actionNames.includes("CheckoutBook") ||
+    actionNames.includes("ReturnBook") ||
+    actionNames.includes("CreateReservation") ||
+    objectNames.includes("Book") ||
+    objectNames.includes("Loan") ||
+    objectNames.includes("Patron");
 
-严格输出 JSON，不要输出任何额外文本。
+  const libraryGuidance = isLibraryDomain
+    ? `领域提示（已识别为“图书馆借阅管理系统”）：
+核心动作示例：CancelReservation, CatalogBook, CheckoutBook, CreateReservation, PayFine, RegisterPatron, RenewLoan, ReturnBook, WeedBook
+核心对象示例：Book, Category, Holding, Library, Loan, Patron, Fine, Publisher, Department, Budget
+核心关系示例：HoldingBook, HoldingLibrary, LoanHolding, PatronLoans, PatronReservations, PatronFines, PatronDepartment, BookCategory, BookPublisher, FineLoan
+核心规则示例：FinePaymentRequired, LoanLimitByPatronType, LoanPeriodByPatronType, OverdueFineRate, RenewalLimit, ReservationLimit, ReservationPickupExpiry, ReservationPriorityByType
 
-输出 JSON schema（必须匹配）：
+角色导向（优先用角色做 MECE 分组）：
+- 读者（Patron）：找书/借书/还书/续借/预约/缴费/账户管理
+- 馆员（Librarian）：编目上架/剔旧下架/借还处理/预约取书/异常处理
+- 管理员（Admin/Manager）：预算与采购/规则配置/人员与部门/运营与合规
+- 系统（System/Automation）：推荐/通知/对账/批处理/审计与观测`
+    : "";
+
+  return `你是“业务场景穷举Agent”（本体业务模型设计器的场景沙盘）。你的目标是：基于输入本体，穷举“可执行”的业务场景清单，并给出覆盖度线索（映射到本体元素）。
+
+先读后写（必须遵守）：
+1) 先读取输入中的 ActionType/ObjectType/LinkType/BusinessRule 的 apiName 列表，把它们当作“唯一合法词表”。
+2) 输出中的 coverageHints 只能引用这些 apiName；不要创造不存在的 apiName。
+3) 输出中的 objects/actors/steps 用自然语言表达没问题，但 coverageHints 必须是 apiName。
+
+方法论与质量闸门（必须遵守）：
+1) MECE：分组互斥、整体尽量穷尽；每个分组给出一句“边界说明”（不包含什么），避免重叠。
+2) 金字塔：先给顶层主题（1 句），再给 5-8 个二级分组（每组含 rationale），再给每组场景清单。
+3) 可执行场景最低标准：必须同时满足
+   - steps 至少 4 步（动词短句），包含触发→校验/规则→执行动作→写入/更新→观测结果
+   - coverageHints.actionTypes 至少 1 个（否则只能标为 PARTIAL 或 GAP）
+4) 场景覆盖面：每个分组至少包含“主流程 + 失败/例外 + 运营/治理 + 观测/审计 + 批处理/离线”中的 3 类。
+5) 去重：不要输出同义重复场景（例如“借书”与“办理借阅”只能保留一个）。
+
+${libraryGuidance}
+
+输出严格为 JSON，不要输出任何额外文本。
+
+输出 JSON schema（必须匹配，字段必须齐全）：
 {
   "pyramid": {
     "theme": "string",
@@ -195,7 +240,7 @@ function buildAgentPrompt(digest: any) {
       {
         "id": "string?",
         "title": "string",
-        "rationale": "string?",
+        "rationale": "string (为什么这样分组 + 边界说明：本组不包含什么)",
         "scenarios": [
           {
             "id": "string?",
@@ -204,17 +249,17 @@ function buildAgentPrompt(digest: any) {
             "trigger": "string?",
             "actors": ["string"]?,
             "objects": ["string"]?,
-            "steps": ["string"]?,
+            "steps": ["string (动词短句，按时间顺序)"],
             "preconditions": ["string"]?,
             "postconditions": ["string"]?,
             "observableResults": ["string"]?,
-            "coverageStatus": "COVERED|PARTIAL|GAP"?,
+            "coverageStatus": "COVERED|PARTIAL|GAP",
             "coverageHints": {
-              "actionTypes": ["string"]?,
-              "objectTypes": ["string"]?,
-              "linkTypes": ["string"]?,
-              "businessRules": ["string"]?
-            }?
+              "actionTypes": ["string (ActionType.apiName)"],
+              "objectTypes": ["string (ObjectType.apiName)"],
+              "linkTypes": ["string (LinkType.apiName)"],
+              "businessRules": ["string (BusinessRule.apiName)"]
+            }
           }
         ]
       }
@@ -223,11 +268,17 @@ function buildAgentPrompt(digest: any) {
 }
 
 覆盖标注规则：
-- coverageHints 中的 actionTypes/objectTypes/linkTypes/businessRules 必须只使用下面输入中存在的 apiName；如果无法判断，留空数组。
-- coverageStatus：
-  - COVERED：能明确映射到至少 1 个 ActionType apiName 且对象/关系匹配清晰
-  - PARTIAL：只有对象/规则可匹配，但动作链不完整或需要新增动作
-  - GAP：本体明显缺少关键对象/动作/规则，属于盲区
+- coverageHints.* 只能使用输入中存在的 apiName；不知道就用空数组，不要编造。
+- coverageStatus 判定（从严）：
+  - COVERED：coverageHints.actionTypes 至少 1 个，且 coverageHints.objectTypes 至少 1 个；steps 与目标一致
+  - PARTIAL：能对齐对象/规则，但关键动作缺失或步骤需要新增动作类型
+  - GAP：核心对象或关键动作都缺失，属于明显盲区
+
+场景输出策略（让结果更“像业务”）：
+1) 优先围绕 ActionType 产出场景：对每个 ActionType，至少产出 1 个“主流程”场景；对关键动作（借还/预约/缴费/编目）再补 1-2 个异常场景。
+2) 用 BusinessRule 牵引异常/边界：例如额度限制、期限、优先级、取书过期、逾期计费、缴费前置等。
+3) 对 LinkType 牵引协作与数据一致性：例如 LoanHolding / PatronLoans / PatronReservations / FineLoan 等。
+4) 如果识别为图书馆领域，分组标题优先按角色命名（读者/馆员/管理员/系统），并在每组内覆盖该角色的“端到端旅程”。
 
 输入（本体摘要，供引用 apiName）：
 ${JSON.stringify(digest)}
