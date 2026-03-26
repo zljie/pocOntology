@@ -11,6 +11,7 @@ import {
   Layers,
   Sparkles,
   X,
+  Boxes,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,11 +20,13 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { useOntologyStore } from "@/stores";
 import { useUIStore } from "@/stores";
 import { SemanticQueryInput } from "@/components/semantic-query/semantic-query-input";
+import { BusinessScenarioSandbox } from "@/components/scenario-sandbox/business-scenario-sandbox";
 
 export function Header() {
   const { objectTypes, linkTypes, loadSampleData, clearAll } = useOntologyStore();
   const { setShowImportDialog, showProposalBanner } = useUIStore();
   const [showSemanticQuery, setShowSemanticQuery] = useState(false);
+  const [showScenarioSandbox, setShowScenarioSandbox] = useState(false);
   const pendingCount = objectTypes.length;
 
   return (
@@ -68,6 +71,16 @@ export function Header() {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            className="bg-gradient-to-r from-[#F97316] to-[#EC4899] hover:opacity-90 text-white"
+            onClick={() => setShowScenarioSandbox(true)}
+          >
+            <Boxes className="w-4 h-4 mr-1" />
+            业务场景沙盘
+          </Button>
+
           {/* Semantic Query Button */}
           <Button
             variant="default"
@@ -177,6 +190,18 @@ export function Header() {
             <SheetTitle>语义查询</SheetTitle>
           </SheetHeader>
           <SemanticQueryInput />
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={showScenarioSandbox} onOpenChange={setShowScenarioSandbox} showOverlay={false}>
+        <SheetContent
+          className="w-[720px] sm:w-[780px] bg-[#0d0d0d] border-[#2d2d2d] p-0"
+          onOpenChange={setShowScenarioSandbox}
+        >
+          <SheetHeader className="sr-only">
+            <SheetTitle>业务场景沙盘</SheetTitle>
+          </SheetHeader>
+          <BusinessScenarioSandbox />
         </SheetContent>
       </Sheet>
     </header>

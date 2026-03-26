@@ -48,7 +48,7 @@ export function OntologyKnowledgeGraph() {
     let cancelled = false;
     import("reagraph").then((mod) => {
       if (cancelled) return;
-      setGraphCanvas(() => mod.GraphCanvas);
+      setGraphCanvas(() => mod.GraphCanvas as unknown as GraphCanvasComponent);
       setTheme({
         ...mod.darkTheme,
         canvas: { ...(mod.darkTheme.canvas ?? {}), background: "#0b0b0b", fog: null },
@@ -133,7 +133,9 @@ export function OntologyKnowledgeGraph() {
           selections={selections}
           theme={theme}
           layoutType="forceDirected2d"
-          labelType="none"
+          labelType="all"
+          edgeLabelPosition="inline"
+          edgeArrowPosition="end"
           cameraMode="pan"
           animated
           draggable
