@@ -104,7 +104,9 @@ export function BusinessScenarioSandbox() {
       const data = (await resp.json()) as SandboxResult;
       setResult(data);
     } catch (e: any) {
-      setError(e?.message || "生成失败");
+      const errorMsg = e?.message || "生成失败";
+      console.error("[Business Scenario Sandbox] Generation failed:", e);
+      setError(errorMsg);
     } finally {
       setIsGenerating(false);
     }

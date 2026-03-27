@@ -439,6 +439,7 @@ async function requestScenarioSandbox(params: {
 
   if (!response.ok) {
     const errorText = await response.text();
+    console.error(`[Business Scenario Sandbox] MiniMax API Error: ${response.status}`, errorText);
     return {
       ok: false as const,
       status: response.status,
@@ -448,6 +449,11 @@ async function requestScenarioSandbox(params: {
 
   const result = await response.json();
   const text = extractTextBlocks(result?.content || []);
+  
+  if (!text) {
+    console.warn(`[Business Scenario Sandbox] MiniMax API returned empty content or unexpected format:`, JSON.stringify(result).slice(0, 500));
+  }
+
   const parsed = safeParseJSON(text) || {};
   const pyramid = normalizePyramid(parsed?.pyramid || {});
 
