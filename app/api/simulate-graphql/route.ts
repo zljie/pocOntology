@@ -42,13 +42,47 @@ function simulateGraphQLResult(operationName: string, templateVars: TemplateVars
     };
   }
 
+  if (operationName === "CreatePO" || operationName === "CreatePurchaseOrder") {
+    return {
+      createPurchaseOrder: {
+        poNumber: `PO-${Date.now()}`,
+        status: "CREATED",
+        supplierId: templateVars.supplierId || "S1001",
+        createdAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  if (operationName === "CreatePR" || operationName === "CreatePurchaseRequisition") {
+    return {
+      createPurchaseRequisition: {
+        prNumber: `PR-${Date.now()}`,
+        status: "PENDING",
+        materialCode: templateVars.materialCode || "M001",
+        createdAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  if (operationName === "ReceiveGoods") {
+    return {
+      receiveGoods: {
+        grNumber: `GR-${Date.now()}`,
+        poNumber: templateVars.poNumber || "PO-123",
+        status: "RECEIVED",
+        receivedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  // Generic fallback
+  const camelCaseName = operationName.charAt(0).toLowerCase() + operationName.slice(1);
   return {
-    checkoutBook: {
-      loanId: `LN-${Date.now()}`,
-      dueDate: new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString(),
-      loanStatus: "ACTIVE",
-      bookTitle: templateVars.bookTitle || "目标图书",
-      patronName: templateVars.patronName || "张三",
+    [camelCaseName]: {
+      id: `ID-${Date.now()}`,
+      status: "SUCCESS",
+      timestamp: new Date().toISOString(),
+      ...templateVars,
     },
   };
 }

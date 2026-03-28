@@ -112,6 +112,12 @@ const ACTION_KEYWORDS: Record<string, { actionId: string; actionName: string; ac
   "缴费": { actionId: "action-pay-fine", actionName: "PayFine", actionDisplayName: "缴纳罚款" },
   "编目": { actionId: "action-catalog", actionName: "CatalogBook", actionDisplayName: "图书编目" },
   "下架": { actionId: "action-weeding", actionName: "WeedBook", actionDisplayName: "图书下架" },
+  // ERP
+  "采购": { actionId: "action-create-po", actionName: "CreatePO", actionDisplayName: "创建采购订单" },
+  "订购": { actionId: "action-create-po", actionName: "CreatePO", actionDisplayName: "创建采购订单" },
+  "申请": { actionId: "action-create-pr", actionName: "CreatePR", actionDisplayName: "创建采购申请" },
+  "收货": { actionId: "action-receive-goods", actionName: "ReceiveGoods", actionDisplayName: "收货过账" },
+  "入库": { actionId: "action-receive-goods", actionName: "ReceiveGoods", actionDisplayName: "收货过账" },
 };
 
 // 属性关键词映射
@@ -135,6 +141,10 @@ const PROPERTY_KEYWORDS: Record<string, { objectTypeId: string; propertyId: stri
   "费用": { objectTypeId: "fine-001", propertyId: "amount", propertyName: "amount", displayName: "罚款金额", baseType: "DOUBLE" },
   "金额": { objectTypeId: "fine-001", propertyId: "amount", propertyName: "amount", displayName: "罚款金额", baseType: "DOUBLE" },
   "罚款": { objectTypeId: "fine-001", propertyId: "amount", propertyName: "amount", displayName: "罚款金额", baseType: "DOUBLE" },
+  // ERP
+  "数量": { objectTypeId: "purchase-requisition", propertyId: "quantity", propertyName: "quantity", displayName: "数量", baseType: "DOUBLE" },
+  "物料编码": { objectTypeId: "material-erp", propertyId: "materialCode", propertyName: "materialCode", displayName: "物料编码", baseType: "STRING" },
+  "单号": { objectTypeId: "purchase-order", propertyId: "poNumber", propertyName: "poNumber", displayName: "订单编号", baseType: "STRING" },
 };
 
 // 实体关键词映射
@@ -157,6 +167,18 @@ const OBJECT_KEYWORDS: Record<string, { objectTypeId: string; objectName: string
   "工作人员": { objectTypeId: "staff-001", objectName: "Staff", displayName: "工作人员" },
   "分类": { objectTypeId: "category-001", objectName: "Category", displayName: "分类" },
   "出版社": { objectTypeId: "publisher-001", objectName: "Publisher", displayName: "出版社" },
+  // ERP
+  "供应商ERP": { objectTypeId: "supplier-erp", objectName: "Supplier", displayName: "供应商" },
+  "物料": { objectTypeId: "material-erp", objectName: "Material", displayName: "物料" },
+  "产品": { objectTypeId: "material-erp", objectName: "Material", displayName: "物料" },
+  "采购申请": { objectTypeId: "purchase-requisition", objectName: "PurchaseRequisition", displayName: "采购申请" },
+  "PR": { objectTypeId: "purchase-requisition", objectName: "PurchaseRequisition", displayName: "采购申请" },
+  "采购订单": { objectTypeId: "purchase-order", objectName: "PurchaseOrder", displayName: "采购订单" },
+  "订单": { objectTypeId: "purchase-order", objectName: "PurchaseOrder", displayName: "采购订单" },
+  "PO": { objectTypeId: "purchase-order", objectName: "PurchaseOrder", displayName: "采购订单" },
+  "收货单": { objectTypeId: "goods-receipt", objectName: "GoodsReceipt", displayName: "收货单" },
+  "入库单": { objectTypeId: "goods-receipt", objectName: "GoodsReceipt", displayName: "收货单" },
+  "发票": { objectTypeId: "invoice", objectName: "Invoice", displayName: "发票" },
 };
 
 // 日期模式
@@ -487,7 +509,7 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
         {/* Examples */}
         <div className="flex flex-wrap gap-2 mt-3">
           <span className="text-[10px] text-[#6b6b6b]">示例:</span>
-          {["借阅《三体》", "还书，条码号 ABC123", "查询超期罚款"].map((example) => (
+          {["借阅《三体》", "还书，条码号 ABC123", "创建采购申请，物料 A001 数量 100"].map((example) => (
             <button
               key={example}
               onClick={() => setQuery(example)}
@@ -1427,9 +1449,9 @@ function EmptyParseResult() {
         <p className="text-[10px] text-[#6b6b6b] mb-2">支持的查询示例:</p>
         {[
           "借阅《三体》这本书",
-          "我需要借一本书，从明天开始算5天",
           "还书，条码号 ABC123",
-          "查询所有超期的借阅记录",
+          "我要创建一个采购订单给供应商 S1001",
+          "采购申请审批通过后，收货入库",
         ].map((example, idx) => (
           <div key={idx} className="flex items-center gap-2 text-[11px] text-[#4a4a4a]">
             <ChevronRight className="w-3 h-3" />

@@ -8,6 +8,7 @@ interface UIStore {
   rightPanelWidth: number;
   showMinimap: boolean;
   showGrid: boolean;
+  canvasViewMode: 'EDITOR' | 'KNOWLEDGE_GRAPH';
   showProposalBanner: boolean;
   showImportDialog: boolean;
   activeTab: string;
@@ -19,6 +20,7 @@ interface UIStore {
   setRightPanelWidth: (width: number) => void;
   toggleMinimap: () => void;
   toggleGrid: () => void;
+  toggleCanvasViewMode: () => void;
   toggleProposalBanner: () => void;
   setShowImportDialog: (show: boolean) => void;
   setActiveTab: (tab: string) => void;
@@ -35,6 +37,7 @@ export const useUIStore = create<UIStore>()(
       rightPanelWidth: 400,
       showMinimap: true,
       showGrid: true,
+      canvasViewMode: 'EDITOR',
       showProposalBanner: true,
       showImportDialog: false,
       activeTab: 'general',
@@ -56,6 +59,11 @@ export const useUIStore = create<UIStore>()(
 
       toggleGrid: () =>
         set((state) => ({ showGrid: !state.showGrid })),
+
+      toggleCanvasViewMode: () =>
+        set((state) => ({
+          canvasViewMode: state.canvasViewMode === 'EDITOR' ? 'KNOWLEDGE_GRAPH' : 'EDITOR',
+        })),
 
       toggleProposalBanner: () =>
         set((state) => ({ showProposalBanner: !state.showProposalBanner })),
@@ -80,6 +88,7 @@ export const useUIStore = create<UIStore>()(
         rightPanelWidth: state.rightPanelWidth,
         showMinimap: state.showMinimap,
         showGrid: state.showGrid,
+        canvasViewMode: state.canvasViewMode,
       }),
     }
   )

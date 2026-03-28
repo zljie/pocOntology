@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 240;
 
 const BASE_URL = process.env.MINIMAX_ANTHROPIC_BASE_URL || "https://api.minimaxi.com/anthropic";
 const MODEL = process.env.MINIMAX_MODEL || "MiniMax-M2.7";
@@ -84,7 +84,7 @@ async function requestAgentText(apiKey: string, prompt: string, maxTokens = 1200
     model: MODEL,
     max_tokens: maxTokens,
     temperature: 0.3,
-    system: "你是图书馆本体语义建模专家。",
+    system: "你是本体语义建模专家。",
     messages: [
       {
         role: "user",
@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const introPrompt = `请用中文向用户解释：基于当前图书馆本体模型，会如何把输入语句转换为语义对象、参数、规则与查询执行结构。当需要输出框架图、架构图或流程图时，请强制使用 mermaid 语法（以 \`\`\`mermaid 开头）。输入：${query}`;
+        const introPrompt = `请用中文向用户解释：基于当前系统中的本体模型，会如何把输入语句转换为语义对象、参数、规则与查询执行结构。当需要输出框架图、架构图或流程图时，请强制使用 mermaid 语法（以 \`\`\`mermaid 开头）。输入：${query}`;
         const parsedPrompt = `仅返回 JSON，不要额外文本。输出 parsedResult 字段，schema: {"parsedResult":{"action":{"id":"string","name":"string","displayName":"string","layer":"KINETIC"},"entities":[],"suggestedProperties":[],"output":[]}}。输入：${query}`;
         const previewPrompt = `仅返回 JSON，不要额外文本。输出 schema: {"semanticScenario":"string","rdf":"string","owl":"string","swrl":"string","dsl":"string","graphqlTemplate":"string","templateVars":{"k":"v"}}。输入：${query}`;
 

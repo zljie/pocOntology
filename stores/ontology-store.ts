@@ -17,6 +17,15 @@ import {
   SAMPLE_AI_MODELS,
   SAMPLE_ANALYSIS_INSIGHTS,
 } from '@/lib/types/ontology';
+import {
+  ERP_OBJECT_TYPES,
+  ERP_LINK_TYPES,
+  ERP_ACTION_TYPES,
+  ERP_DATA_FLOWS,
+  ERP_BUSINESS_RULES,
+  ERP_AI_MODELS,
+  ERP_ANALYSIS_INSIGHTS,
+} from '@/lib/types/ontology-erp-sample';
 import { generateId } from '@/lib/utils';
 
 interface OntologyStore {
@@ -81,7 +90,7 @@ interface OntologyStore {
   getAnalysisInsight: (id: string) => AnalysisInsight | undefined;
 
   // Utility Actions
-  loadSampleData: () => void;
+  loadSampleData: (scenario?: 'library' | 'erp') => void;
   clearAll: () => void;
   updateLastSaved: () => void;
 }
@@ -399,17 +408,30 @@ export const useOntologyStore = create<OntologyStore>()(
       },
 
       // ================== Utility Actions ==================
-      loadSampleData: () => {
-        set({
-          objectTypes: SAMPLE_OBJECT_TYPES,
-          linkTypes: SAMPLE_LINK_TYPES,
-          actionTypes: SAMPLE_ACTION_TYPES,
-          dataFlows: SAMPLE_DATA_FLOWS,
-          businessRules: SAMPLE_BUSINESS_RULES,
-          aiModels: SAMPLE_AI_MODELS,
-          analysisInsights: SAMPLE_ANALYSIS_INSIGHTS,
-          lastSaved: new Date().toISOString(),
-        });
+      loadSampleData: (scenario = 'library') => {
+        if (scenario === 'erp') {
+          set({
+            objectTypes: ERP_OBJECT_TYPES,
+            linkTypes: ERP_LINK_TYPES,
+            actionTypes: ERP_ACTION_TYPES,
+            dataFlows: ERP_DATA_FLOWS,
+            businessRules: ERP_BUSINESS_RULES,
+            aiModels: ERP_AI_MODELS,
+            analysisInsights: ERP_ANALYSIS_INSIGHTS,
+            lastSaved: new Date().toISOString(),
+          });
+        } else {
+          set({
+            objectTypes: SAMPLE_OBJECT_TYPES,
+            linkTypes: SAMPLE_LINK_TYPES,
+            actionTypes: SAMPLE_ACTION_TYPES,
+            dataFlows: SAMPLE_DATA_FLOWS,
+            businessRules: SAMPLE_BUSINESS_RULES,
+            aiModels: SAMPLE_AI_MODELS,
+            analysisInsights: SAMPLE_ANALYSIS_INSIGHTS,
+            lastSaved: new Date().toISOString(),
+          });
+        }
       },
 
       clearAll: () => {
