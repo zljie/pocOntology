@@ -17,6 +17,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useOntologyStore } from "@/stores";
 import { useUIStore } from "@/stores";
 import { SemanticQueryInput } from "@/components/semantic-query/semantic-query-input";
@@ -123,19 +129,33 @@ export function Header() {
 
           <div className="w-px h-6 bg-[#3d3d3d] mx-1" />
 
-          <Tooltip>
-            <TooltipTrigger asChild>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="sm"
                 className="text-xs text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
-                onClick={() => loadSampleData()}
               >
                 加载示例
               </Button>
-            </TooltipTrigger>
-            <TooltipContent>加载示例数据</TooltipContent>
-          </Tooltip>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40 bg-[#161614] border-[#3d3d3d] text-[#a0a0a0]">
+              <DropdownMenuItem 
+                onClick={() => loadSampleData('library')}
+                className="hover:bg-[#2d2d2d] hover:text-white focus:bg-[#2d2d2d] focus:text-white cursor-pointer"
+              >
+                <Layers className="w-4 h-4 mr-2" />
+                图书馆管理系统
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => loadSampleData('erp')}
+                className="hover:bg-[#2d2d2d] hover:text-white focus:bg-[#2d2d2d] focus:text-white cursor-pointer"
+              >
+                <Boxes className="w-4 h-4 mr-2" />
+                ERP采购业务模块
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Tooltip>
             <TooltipTrigger asChild>

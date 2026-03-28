@@ -134,6 +134,7 @@ export function OntologyKnowledgeGraph() {
           theme={theme}
           layoutType="forceDirected2d"
           labelType="all"
+          labelFontUrl="/fonts/LXGWWenKai-Regular.ttf"
           edgeLabelPosition="inline"
           edgeArrowPosition="end"
           cameraMode="pan"

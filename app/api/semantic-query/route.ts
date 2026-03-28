@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 240;
 
 const BASE_URL = process.env.MINIMAX_ANTHROPIC_BASE_URL || "https://api.minimaxi.com/anthropic";
 const MODEL = process.env.MINIMAX_MODEL || "MiniMax-M2.7";
@@ -70,6 +70,27 @@ const CASE_EXAMPLES = [
       output: [
         { propertyId: "amount", propertyName: "amount", displayName: "罚款金额", description: "按滞纳规则计算" },
         { propertyId: "daysOverdue", propertyName: "daysOverdue", displayName: "逾期天数", description: "根据应还日期与当前日期计算" },
+      ],
+    },
+  },
+  {
+    caseId: "case-erp-po",
+    input: "创建采购订单给供应商 S1001",
+    dsl: "ACTION CreatePO WITH Supplier.supplierId=\"S1001\"",
+    graphqlTemplate:
+      "mutation CreatePO($supplierId: String!) { createPurchaseOrder(input: { supplierId: $supplierId }) { poNumber status } }",
+    templateVars: { supplierId: "S1001" },
+    parsedResult: {
+      action: { id: "action-create-po", name: "CreatePO", displayName: "创建采购订单", layer: "KINETIC" },
+      entities: [
+        { type: "OBJECT_TYPE", id: "supplier-erp", name: "Supplier", displayName: "供应商", confidence: 0.95, matchedText: "供应商" },
+        { type: "OBJECT_TYPE", id: "purchase-order", name: "PurchaseOrder", displayName: "采购订单", confidence: 0.95, matchedText: "采购订单" },
+      ],
+      suggestedProperties: [
+        { propertyId: "supplierId", propertyName: "supplierId", displayName: "供应商编码", value: "S1001", inferred: false, source: "STRING", objectTypeId: "supplier-erp" },
+      ],
+      output: [
+        { propertyId: "poNumber", propertyName: "poNumber", displayName: "PO编号", description: "生成采购订单流水号" },
       ],
     },
   },

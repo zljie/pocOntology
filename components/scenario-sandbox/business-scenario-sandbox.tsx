@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -16,6 +16,9 @@ type SandboxResult = {
     ontologyDigest?: string;
     model?: string;
     generatedAt?: string;
+    requestId?: string;
+    promptChars?: number;
+    approxTokens?: number;
   };
   pyramid?: {
     theme?: string;
@@ -70,6 +73,12 @@ export function BusinessScenarioSandbox() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SandboxResult | null>(null);
+  const [phase, setPhase] = useState<"idle" | "prepare" | "waiting" | "done" | "error">("idle");
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [requestInfo, setRequestInfo] = useState<{ requestId: string; promptChars?: number; approxTokens?: number } | null>(
+    null
+  );
+  const startedAtRef = useRef<number | null>(null);
 
   const ontologySnapshot = useMemo(
     () => ({
@@ -83,6 +92,17 @@ export function BusinessScenarioSandbox() {
     [objectTypes, linkTypes, actionTypes, dataFlows, businessRules, aiModels]
   );
 
+  useEffect(() => {
+    if (!isGenerating) return;
+    const handle = window.setInterval(() => {
+      if (startedAtRef.current == null) return;
+      setElapsedMs(Date.now() - startedAtRef.current);
+    }, 200);
+    return () => {
+      window.clearInterval(handle);
+    };
+  }, [isGenerating]);
+
   const resultText = useMemo(() => {
     if (!result) return "";
     return JSON.stringify(result, null, 2);
@@ -91,11 +111,34 @@ export function BusinessScenarioSandbox() {
   async function onGenerate() {
     setIsGenerating(true);
     setError(null);
+    setPhase("prepare");
+    setElapsedMs(0);
+    startedAtRef.current = Date.now();
     try {
+      const prepareResp = await fetch("/api/business-scenario-sandbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ontology: ontologySnapshot, mode: "prepare" }),
+      });
+      if (!prepareResp.ok) {
+        const text = await prepareResp.text();
+        throw new Error(text.slice(0, 800) || `HTTP ${prepareResp.status}`);
+      }
+      const prepared = (await prepareResp.json()) as any;
+      const requestId = String(prepared?.meta?.requestId || "");
+      const promptChars = Number(prepared?.meta?.promptChars || 0) || undefined;
+      const approxTokens = Number(prepared?.meta?.approxTokens || 0) || undefined;
+      if (requestId) {
+        setRequestInfo({ requestId, promptChars, approxTokens });
+      } else {
+        setRequestInfo(null);
+      }
+
+      setPhase("waiting");
       const resp = await fetch("/api/business-scenario-sandbox", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ontology: ontologySnapshot }),
+        body: JSON.stringify({ ontology: ontologySnapshot, requestId }),
       });
       if (!resp.ok) {
         const text = await resp.text();
@@ -103,10 +146,19 @@ export function BusinessScenarioSandbox() {
       }
       const data = (await resp.json()) as SandboxResult;
       setResult(data);
+      if (data?.meta?.requestId) {
+        setRequestInfo({
+          requestId: String(data.meta.requestId),
+          promptChars: data.meta.promptChars,
+          approxTokens: data.meta.approxTokens,
+        });
+      }
+      setPhase("done");
     } catch (e: any) {
       const errorMsg = e?.message || "生成失败";
-      console.error("[Business Scenario Sandbox] Generation failed:", e);
+      console.error("[Business Scenario Sandbox] Generation failed:", { phase, requestInfo, error: e });
       setError(errorMsg);
+      setPhase("error");
     } finally {
       setIsGenerating(false);
     }
@@ -168,6 +220,21 @@ export function BusinessScenarioSandbox() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {requestInfo?.approxTokens ? (
+            <Badge variant="secondary" className="bg-[#2d2d2d] text-[#a0a0a0] border-[#3d3d3d]">
+              ≈{requestInfo.approxTokens} tokens
+            </Badge>
+          ) : null}
+          {requestInfo?.requestId ? (
+            <Badge variant="secondary" className="bg-[#2d2d2d] text-[#a0a0a0] border-[#3d3d3d]">
+              rid:{requestInfo.requestId}
+            </Badge>
+          ) : null}
+          {isGenerating ? (
+            <Badge variant="secondary" className="bg-[#1f2937] text-[#93c5fd] border border-[#334155]">
+              {phase === "prepare" ? "准备中" : phase === "waiting" ? "等待中" : "处理中"} {Math.round(elapsedMs / 100) / 10}s
+            </Badge>
+          ) : null}
           <Button
             variant="default"
             size="sm"

@@ -3,7 +3,7 @@ import crypto from "crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 240;
 
 const BASE_URL = process.env.MINIMAX_ANTHROPIC_BASE_URL || "https://api.minimaxi.com/anthropic";
 const MODEL = process.env.MINIMAX_MODEL || "MiniMax-M2.7";
@@ -70,6 +70,18 @@ function safeParseJSON(text: string) {
 function stableHash(value: unknown) {
   const json = JSON.stringify(value, Object.keys(value as any).sort());
   return crypto.createHash("sha256").update(json).digest("hex").slice(0, 16);
+}
+
+function createRequestId() {
+  return crypto.randomBytes(6).toString("hex");
+}
+
+function estimateTokens(text: string) {
+  const chars = text.length;
+  const cjk = (text.match(/[\u4E00-\u9FFF]/g) || []).length;
+  const other = chars - cjk;
+  const approxTokens = Math.ceil(cjk / 1.5 + other / 4);
+  return { chars, approxTokens };
 }
 
 function normalizeStringArray(value: any) {
@@ -198,6 +210,15 @@ function buildAgentPrompt(digest: any) {
     objectNames.includes("Loan") ||
     objectNames.includes("Patron");
 
+  const isErpDomain =
+    actionNames.includes("CreatePO") ||
+    actionNames.includes("CreatePR") ||
+    actionNames.includes("ReceiveGoods") ||
+    objectNames.includes("PurchaseOrder") ||
+    objectNames.includes("PurchaseRequisition") ||
+    objectNames.includes("GoodsReceipt") ||
+    objectNames.includes("Supplier");
+
   const libraryGuidance = isLibraryDomain
     ? `领域提示（已识别为“图书馆借阅管理系统”）：
 核心动作示例：CancelReservation, CatalogBook, CheckoutBook, CreateReservation, PayFine, RegisterPatron, RenewLoan, ReturnBook, WeedBook
@@ -210,6 +231,21 @@ function buildAgentPrompt(digest: any) {
 - 馆员（Librarian）：编目上架/剔旧下架/借还处理/预约取书/异常处理
 - 管理员（Admin/Manager）：预算与采购/规则配置/人员与部门/运营与合规
 - 系统（System/Automation）：推荐/通知/对账/批处理/审计与观测`
+    : "";
+
+  const erpGuidance = isErpDomain
+    ? `领域提示（已识别为“ERP采购业务模块”）：
+核心动作示例：CreatePR, ApprovePR, CreatePO, ReceiveGoods, VerifyInvoice, MakePayment
+核心对象示例：Supplier, Material, PurchaseRequisition, PurchaseOrder, GoodsReceipt, Invoice
+核心关系示例：PRMaterial, POSupplier, POtoPR, GRtoPO, InvoiceToPO
+核心规则示例：POApprovalMatrix, ThreeWayMatch
+
+角色导向（优先用角色做 MECE 分组）：
+- 需求方（Requester）：提报需求/关注到货/撤销申请
+- 采购员（Buyer）：寻源/创建PO/跟催/供应商绩效
+- 仓管员（Warehouse）：收货/质检入库/退货出库
+- 财务（Finance）：发票校验/付款/对账
+- 系统（System）：三单匹配/预警/分析报表`
     : "";
 
   return `你是“业务场景穷举Agent”（本体业务模型设计器的场景沙盘）。你的目标是：基于输入本体，穷举“可执行”的业务场景清单，并给出覆盖度线索（映射到本体元素）。
@@ -241,6 +277,7 @@ function buildAgentPrompt(digest: any) {
 6) 如果你预计会超长：删减低优先级场景（重复/边缘/过细粒度），保持每个 ActionType 至少出现一次。
 
 ${libraryGuidance}
+${erpGuidance}
 
 输出严格为 JSON，不要输出任何额外文本。
 
@@ -297,10 +334,10 @@ ${libraryGuidance}
   - GAP：核心对象或关键动作都缺失，属于明显盲区
 
 场景输出策略（让结果更“像业务”）：
-1) 优先围绕 ActionType 产出场景：对每个 ActionType，至少产出 1 个“主流程”场景；对关键动作（借还/预约/缴费/编目）再补 1-2 个异常场景。
-2) 用 BusinessRule 牵引异常/边界：例如额度限制、期限、优先级、取书过期、逾期计费、缴费前置等。
-3) 对 LinkType 牵引协作与数据一致性：例如 LoanHolding / PatronLoans / PatronReservations / FineLoan 等。
-4) 如果识别为图书馆领域，分组标题优先按角色命名（读者/馆员/管理员/系统），并在每组内覆盖该角色的“端到端旅程”。
+1) 优先围绕 ActionType 产出场景：对每个 ActionType，至少产出 1 个“主流程”场景；对关键动作再补 1-2 个异常场景。
+2) 用 BusinessRule 牵引异常/边界：例如额度限制、期限、优先级、逾期计费、审批矩阵等。
+3) 对 LinkType 牵引协作与数据一致性：例如关联关系、外键约束等。
+4) 如果识别为特定领域（如图书馆、ERP），分组标题优先按角色命名，并在每组内覆盖该角色的“端到端旅程”。
 
 输入（本体摘要，供引用 apiName）：
 ${JSON.stringify(digest)}
@@ -471,7 +508,9 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => null);
+  const mode = String(body?.mode || "run");
   const ontology = body?.ontology;
+  const requestId = String(body?.requestId || createRequestId());
   if (!ontology) {
     return NextResponse.json({ error: "ontology 不能为空" }, { status: 400 });
   }
@@ -482,6 +521,22 @@ export async function POST(req: NextRequest) {
   }
 
   const prompt = buildAgentPrompt(digest);
+  const promptEstimate = estimateTokens(prompt);
+
+  if (mode === "prepare") {
+    return NextResponse.json({
+      meta: {
+        requestId,
+        ontologyDigest,
+        preparedAt: new Date().toISOString(),
+        promptChars: promptEstimate.chars,
+        approxTokens: promptEstimate.approxTokens,
+        counts: digest?.meta || {},
+      },
+    });
+  }
+
+  console.log(`[Business Scenario Sandbox] start requestId=${requestId} digest=${ontologyDigest} promptChars=${promptEstimate.chars} approxTokens=${promptEstimate.approxTokens}`);
 
   const primary = await requestScenarioSandbox({
     apiKey,
@@ -491,8 +546,9 @@ export async function POST(req: NextRequest) {
   });
 
   if (!primary.ok) {
+    console.error(`[Business Scenario Sandbox] LLM call failed requestId=${requestId} status=${primary.status}`, primary.errorText);
     return NextResponse.json(
-      { error: "MiniMax 调用失败", detail: primary.errorText.slice(0, 800) },
+      { error: "MiniMax 调用失败", requestId, detail: primary.errorText.slice(0, 800) },
       { status: 502 }
     );
   }
@@ -503,6 +559,7 @@ export async function POST(req: NextRequest) {
   const primaryGroups = Array.isArray(pyramid?.groups) ? pyramid.groups : [];
   const looksTruncated = typeof text === "string" && text.length > 0 && !primaryGroups.length;
   if (looksTruncated) {
+    console.warn(`[Business Scenario Sandbox] looksTruncated, retrying compressed requestId=${requestId}`);
     const retryPrompt =
       `${prompt}\n\n` +
       `补救模式（你上次输出可能因为过长被截断）：\n` +
@@ -520,6 +577,8 @@ export async function POST(req: NextRequest) {
     if (retry.ok) {
       pyramid = retry.pyramid;
       text = retry.text;
+    } else {
+      console.warn(`[Business Scenario Sandbox] retry failed requestId=${requestId} status=${retry.status}`, retry.errorText);
     }
   }
 
@@ -531,11 +590,14 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     meta: {
+      requestId,
       ontologyDigest,
       model: MODEL,
       generatedAt: new Date().toISOString(),
       totalGroups,
       totalScenarios,
+      promptChars: promptEstimate.chars,
+      approxTokens: promptEstimate.approxTokens,
     },
     pyramid,
     coverage,
