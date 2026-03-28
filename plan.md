@@ -39,18 +39,18 @@
 - 关联（可选）：components/graph-canvas/ontology-canvas.tsx；components/graph-canvas/ontology-knowledge-graph.tsx；package.json
 - 记录：创建日期 2026-03-25
 
-### [0008] 提交当前版本并合并到 main（master）
-- 用户故事：作为协作方，我希望将当前版本提交到 Git 并可合并到主分支，以便稳定发布与协作开发。
-- 验收标准：
-  - [ ] 工作区变更已提交到 feature 分支并推送远端
-  - [ ] 与 origin/main 合并无冲突（或冲突已解决）
-  - [ ] main 分支已更新并推送远端
-  - [ ] `npm run lint` 与 `npm run build` 通过
-- 记录：创建日期 2026-03-28
-
 ---
 
 ## Done（已完成）
+
+### [0008] 提交当前版本并合并到 main（master）
+- 用户故事：作为协作方，我希望将当前版本提交到 Git 并可合并到主分支，以便稳定发布与协作开发。
+- 验收标准：
+  - [x] 工作区变更已提交到 feature 分支并推送远端
+  - [x] 与 origin/main 合并无冲突（或冲突已解决）
+  - [x] main 分支已更新并推送远端
+  - [x] `npm run lint` 与 `npm run build` 通过
+- 记录：创建日期 2026-03-28；完成日期 2026-03-28
 
 ### [0007] 引入新的示例场景：ERP采购业务模块
 - 用户故事：作为业务建模用户，我希望在加载示例中能选择“ERP采购业务模块”，以便除了图书馆外，有更典型的企业级业务场景供我参考与推演。
