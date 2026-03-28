@@ -125,7 +125,7 @@ export function ObjectTypeList({ onSelect }: ObjectTypeListProps) {
               </div>
               <p className="text-sm text-[#6b6b6b]">暂无对象类型</p>
               <p className="text-xs text-[#4a4a4a] mt-1">
-                点击上方"新建"创建第一个对象类型
+                点击上方“新建”创建第一个对象类型
               </p>
             </div>
           ) : (
