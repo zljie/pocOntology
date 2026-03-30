@@ -113,6 +113,10 @@ const ACTION_KEYWORDS: Record<string, { actionId: string; actionName: string; ac
   "编目": { actionId: "action-catalog", actionName: "CatalogBook", actionDisplayName: "图书编目" },
   "下架": { actionId: "action-weeding", actionName: "WeedBook", actionDisplayName: "图书下架" },
   // ERP
+  "创建采购申请": { actionId: "action-create-pr", actionName: "CreatePR", actionDisplayName: "创建采购申请" },
+  "采购申请": { actionId: "action-create-pr", actionName: "CreatePR", actionDisplayName: "创建采购申请" },
+  "创建采购订单": { actionId: "action-create-po", actionName: "CreatePO", actionDisplayName: "创建采购订单" },
+  "采购订单": { actionId: "action-create-po", actionName: "CreatePO", actionDisplayName: "创建采购订单" },
   "采购": { actionId: "action-create-po", actionName: "CreatePO", actionDisplayName: "创建采购订单" },
   "订购": { actionId: "action-create-po", actionName: "CreatePO", actionDisplayName: "创建采购订单" },
   "申请": { actionId: "action-create-pr", actionName: "CreatePR", actionDisplayName: "创建采购申请" },
@@ -264,7 +268,7 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
           return;
         }
         if (event.type === "parsed_result" && event.parsedResult) {
-          const normalizedLLMResult = normalizeLLMParsedResult(event.parsedResult, result);
+          const normalizedLLMResult = normalizeLLMParsedResult(event.parsedResult, result, actionTypes);
           setParsedResult(normalizedLLMResult);
           setSemanticParsedResult(normalizedLLMResult);
           setSemanticHighlightedNodeIds(
@@ -328,7 +332,7 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
       if (!streamResolved) {
         const llmPreview = await requestLLMSemanticPreview(normalizedQuery);
         if (llmPreview?.parsedResult) {
-          const normalizedLLMResult = normalizeLLMParsedResult(llmPreview.parsedResult, result);
+          const normalizedLLMResult = normalizeLLMParsedResult(llmPreview.parsedResult, result, actionTypes);
           setParsedResult(normalizedLLMResult);
           setSemanticParsedResult(normalizedLLMResult);
           setSemanticHighlightedNodeIds(
@@ -556,6 +560,34 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
 }
 
 // ==================== 解析逻辑 ====================
+function deriveOutputFromActionTypes(
+  action: { id: string; name: string },
+  actionTypes: any[]
+): NonNullable<ParsedIntent["output"]> {
+  if (!action?.id && !action?.name) return [];
+  const matchedActionType = actionTypes.find(
+    (at) => at?.id === action.id || at?.apiName === action.name
+  );
+  const outputProperties = Array.isArray(matchedActionType?.outputProperties)
+    ? matchedActionType.outputProperties
+    : [];
+  if (outputProperties.length === 0) return [];
+
+  return outputProperties
+    .map((prop: any) => {
+      const propertyId = String(prop?.id || prop?.apiName || "");
+      const propertyName = String(prop?.apiName || prop?.id || "");
+      if (!propertyId && !propertyName) return null;
+      return {
+        propertyId,
+        propertyName,
+        displayName: String(prop?.displayName || propertyName || propertyId),
+        description: String(prop?.description || ""),
+      };
+    })
+    .filter(Boolean) as NonNullable<ParsedIntent["output"]>;
+}
+
 function performParsing(
   query: string,
   actionTypes: any[],
@@ -576,7 +608,10 @@ function performParsing(
   };
 
   // 1. 识别动作
-  for (const [keyword, action] of Object.entries(ACTION_KEYWORDS)) {
+  const actionKeywordEntries = Object.entries(ACTION_KEYWORDS).sort(
+    (a, b) => b[0].length - a[0].length
+  );
+  for (const [keyword, action] of actionKeywordEntries) {
     if (query.includes(keyword)) {
       result.action = {
         id: action.actionId,
@@ -777,26 +812,33 @@ function performParsing(
   }
 
   // 9. 输出结果
-  result.output = [
-    {
-      propertyId: "loanId",
-      propertyName: "loanId",
-      displayName: "借阅ID",
-      description: "系统将自动生成唯一借阅编号",
-    },
-    {
-      propertyId: "dueDate",
-      propertyName: "dueDate",
-      displayName: "应还日期",
-      description: "根据读者类型和借阅天数自动计算",
-    },
-    {
-      propertyId: "loanStatus",
-      propertyName: "loanStatus",
-      displayName: "借阅状态",
-      description: "初始状态为 ACTIVE（进行中）",
-    },
-  ];
+  const derivedOutput = deriveOutputFromActionTypes(result.action, actionTypes);
+  if (derivedOutput.length > 0) {
+    result.output = derivedOutput;
+  } else if (result.action.id === "action-checkout") {
+    result.output = [
+      {
+        propertyId: "loanId",
+        propertyName: "loanId",
+        displayName: "借阅ID",
+        description: "系统将自动生成唯一借阅编号",
+      },
+      {
+        propertyId: "dueDate",
+        propertyName: "dueDate",
+        displayName: "应还日期",
+        description: "根据读者类型和借阅天数自动计算",
+      },
+      {
+        propertyId: "loanStatus",
+        propertyName: "loanStatus",
+        displayName: "借阅状态",
+        description: "初始状态为 ACTIVE（进行中）",
+      },
+    ];
+  } else {
+    result.output = [];
+  }
 
   return result;
 }
@@ -921,7 +963,11 @@ async function requestSemanticAgentStream(
   }
 }
 
-function normalizeLLMParsedResult(parsed: Partial<ParsedIntent>, fallback: ParsedIntent): ParsedIntent {
+function normalizeLLMParsedResult(
+  parsed: Partial<ParsedIntent>,
+  fallback: ParsedIntent,
+  actionTypes: any[]
+): ParsedIntent {
   const rawParsed = parsed as any;
   const rawAction = rawParsed?.action || rawParsed?.intentAction || {};
   const rawEntities = Array.isArray(rawParsed?.entities)
@@ -973,6 +1019,14 @@ function normalizeLLMParsedResult(parsed: Partial<ParsedIntent>, fallback: Parse
       }))
     : fallback.suggestedProperties;
 
+  const derivedOutput = deriveOutputFromActionTypes(action, actionTypes);
+  const normalizedOutput =
+    rawOutput.length > 0
+      ? rawOutput
+      : derivedOutput.length > 0
+      ? derivedOutput
+      : fallback.output || [];
+
   return {
     action,
     entities,
@@ -982,7 +1036,7 @@ function normalizeLLMParsedResult(parsed: Partial<ParsedIntent>, fallback: Parse
       Array.isArray(parsed.businessRules) && parsed.businessRules.length > 0
         ? parsed.businessRules
         : fallback.businessRules,
-    output: rawOutput.length > 0 ? rawOutput : fallback.output,
+    output: normalizedOutput,
   };
 }
 
@@ -1191,8 +1245,26 @@ function ParseResultDisplay({
   result: ParsedIntent;
   onSelectAction: (actionId: string) => void;
 }) {
+  if (!result) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="text-center">
+          <AlertTriangle className="w-8 h-8 text-[#F59E0B] mx-auto mb-2" />
+          <p className="text-sm text-[#6b6b6b]">暂无解析结果</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {/* 主标题 */}
+      <div className="text-center py-4">
+        <h2 className="text-lg font-semibold text-white flex items-center justify-center gap-2">
+          <Sparkles className="w-5 h-5 text-[#8B5CF6]" />
+          语义解析对象拆解
+        </h2>
+      </div>
       {/* 解析摘要 */}
       <Card className="bg-gradient-to-br from-[#1a1a1a] to-[#0d0d0d] border-[#2d2d2d]">
         <CardHeader className="pb-2">
@@ -1243,7 +1315,7 @@ function ParseResultDisplay({
       </Card>
 
       {/* 识别的实体 */}
-      {result.entities.length > 0 && (
+      {result.entities && result.entities.length > 0 && (
         <Card className="bg-[#1a1a1a] border-[#2d2d2d]">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
@@ -1261,14 +1333,14 @@ function ParseResultDisplay({
                   <BookOpen className="w-4 h-4 text-[#3B82F6]" />
                   <div className="flex-1 min-w-0">
                     <span className="text-sm text-white block truncate">
-                      {entity.displayName}
+                      {entity.displayName || entity.name || '未命名实体'}
                     </span>
                     <span className="text-[10px] text-[#6b6b6b] font-mono">
-                      {entity.matchedText}
+                      {entity.matchedText || '无匹配文本'}
                     </span>
                   </div>
                   <Badge className="text-[9px] bg-[#3B82F6]/20 text-[#3B82F6] border-0">
-                    {Math.round(entity.confidence * 100)}%
+                    {entity.confidence ? Math.round(entity.confidence * 100) : 0}%
                   </Badge>
                 </div>
               ))}
@@ -1278,7 +1350,7 @@ function ParseResultDisplay({
       )}
 
       {/* 提取的参数 */}
-      {result.suggestedProperties.length > 0 && (
+      {result.suggestedProperties && result.suggestedProperties.length > 0 && (
         <Card className="bg-[#1a1a1a] border-[#2d2d2d]">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
@@ -1303,14 +1375,14 @@ function ParseResultDisplay({
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <span className="text-sm text-white block">{prop.displayName}</span>
+                    <span className="text-sm text-white block">{prop.displayName || prop.propertyName || '未命名属性'}</span>
                     <span className="text-[10px] text-[#6b6b6b] font-mono">
-                      {prop.propertyName}
+                      {prop.propertyName || '未知属性名'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium text-[#10B981]">
-                      {prop.value}
+                      {prop.value !== undefined && prop.value !== null ? String(prop.value) : '无值'}
                     </span>
                     {prop.inferred && (
                       <Badge className="text-[9px] bg-[#8B5CF6]/20 text-[#8B5CF6] border-0">
@@ -1405,12 +1477,12 @@ function ParseResultDisplay({
       )}
 
       {/* 输出结果 */}
-      {result.output && result.output.length > 0 && (
+      {result && result.output && Array.isArray(result.output) && result.output.length > 0 && (
         <Card className="bg-[#1a1a1a] border-[#2d2d2d]">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Info className="w-4 h-4 text-[#8B5CF6]" />
-              将生成的字段
+              将生成的数据或者生成的实例
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -1422,8 +1494,8 @@ function ParseResultDisplay({
                 >
                   <Sparkles className="w-4 h-4 text-[#8B5CF6]" />
                   <div className="flex-1 min-w-0">
-                    <span className="text-sm text-white block">{out.displayName}</span>
-                    <span className="text-[10px] text-[#6b6b6b]">{out.description}</span>
+                    <span className="text-sm text-white block">{out.displayName || out.propertyName || '未命名输出'}</span>
+                    <span className="text-[10px] text-[#6b6b6b]">{out.description || '无描述'}</span>
                   </div>
                 </div>
               ))}
