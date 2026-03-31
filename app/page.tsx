@@ -6,6 +6,8 @@ import { ThreePanelLayout } from "@/components/layout/three-panel-layout";
 import { OntologyLayerPanel } from "@/components/ontology-layers/ontology-layer-panel";
 import { OntologyCanvas } from "@/components/graph-canvas/ontology-canvas";
 import { PropertyEditorPanel } from "@/components/property-editor/property-editor-panel";
+import { KineticEditorPanel } from "@/components/property-editor/kinetic-editor-panel";
+import { DynamicEditorPanel } from "@/components/property-editor/dynamic-editor-panel";
 import { RightSemanticQueryPanel } from "@/components/semantic-query/right-semantic-query-panel";
 import { ImportDialog } from "@/components/proposal-system/import-dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -24,6 +26,8 @@ export default function HomePage() {
           rightPanel={
             <>
               <PropertyEditorPanel />
+              <KineticEditorPanel />
+              <DynamicEditorPanel />
               <RightSemanticQueryPanel />
             </>
           }

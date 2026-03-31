@@ -29,6 +29,7 @@ interface ProposalStore {
   getProposal: (id: string) => Proposal | undefined;
   getPendingProposals: () => Proposal[];
   getProposalCount: () => { pending: number; approved: number; rejected: number };
+  clearAll: () => void;
 }
 
 export const useProposalStore = create<ProposalStore>()(
@@ -143,6 +144,13 @@ export const useProposalStore = create<ProposalStore>()(
           approved: proposals.filter((p) => p.status === 'APPROVED').length,
           rejected: proposals.filter((p) => p.status === 'REJECTED').length,
         };
+      },
+
+      clearAll: () => {
+        set({
+          proposals: [],
+          activeProposalId: null,
+        });
       },
     }),
     {

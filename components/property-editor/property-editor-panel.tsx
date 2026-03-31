@@ -111,21 +111,106 @@ export function PropertyEditorPanel() {
             <ChevronRight className="w-4 h-4 text-[#5b8def]" />
             <span className="text-[#a0a0a0]">{targetType?.displayName || "未知"}</span>
           </div>
-          <Badge className="mt-2 bg-[#5b8def]/20 text-[#5b8def] border-[#5b8def]/30">{selectedLinkType.cardinality.replace("_", " ")}</Badge>
+          <Badge className="mt-2 bg-[#5b8def]/20 text-[#5b8def] border-[#5b8def]/30">{selectedLinkType.cardinality.replace(/_/g, " ")}</Badge>
         </div>
         <ScrollArea className="flex-1 p-4">
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-xs text-[#6b6b6b]">基数</Label>
-              <Select value={selectedLinkType.cardinality} onValueChange={(value) => updateLinkType(selectedLinkType.id, { cardinality: value as any })}>
-                <SelectTrigger className="bg-[#0d0d0d] border-[#2d2d2d]"><SelectValue /></SelectTrigger>
-                <SelectContent className="bg-[#1a1a18] border-[#2d2d2d]">
-                  <SelectItem value="ONE_TO_ONE">1:1 (一对一)</SelectItem>
-                  <SelectItem value="ONE_TO_MANY">1:N (一对多)</SelectItem>
-                  <SelectItem value="MANY_TO_ONE">N:1 (多对一)</SelectItem>
-                  <SelectItem value="MANY_TO_MANY">M:N (多对多)</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium text-white flex items-center gap-2">
+                <Settings className="w-4 h-4" /> 基本配置
+              </h3>
+              <div className="space-y-2">
+                <Label className="text-xs text-[#6b6b6b]">关系类型 ID (需以小写字母开头)</Label>
+                <Input value={selectedLinkType.id} disabled className="bg-[#0d0d0d] border-[#2d2d2d] font-mono text-xs opacity-70" />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-[#6b6b6b]">全局 API 名称</Label>
+                <Input 
+                  value={selectedLinkType.apiName} 
+                  onChange={(e) => updateLinkType(selectedLinkType.id, { apiName: e.target.value })} 
+                  className="bg-[#0d0d0d] border-[#2d2d2d] font-mono text-xs" 
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-[#6b6b6b]">基数 (Cardinality)</Label>
+                <Select value={selectedLinkType.cardinality} onValueChange={(value) => updateLinkType(selectedLinkType.id, { cardinality: value as any })}>
+                  <SelectTrigger className="bg-[#0d0d0d] border-[#2d2d2d]"><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-[#1a1a18] border-[#2d2d2d]">
+                    <SelectItem value="ONE_TO_ONE">1:1 (一对一)</SelectItem>
+                    <SelectItem value="ONE_TO_MANY">1:N (一对多)</SelectItem>
+                    <SelectItem value="MANY_TO_ONE">N:1 (多对一)</SelectItem>
+                    <SelectItem value="MANY_TO_MANY">M:N (多对多)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <Separator className="bg-[#2d2d2d]" />
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium text-[#5b8def] flex items-center gap-2">
+                目标侧配置 (从 {sourceType?.displayName || "Source"} 到 {targetType?.displayName || "Target"})
+              </h3>
+              <div className="space-y-2">
+                <Label className="text-xs text-[#6b6b6b]">目标侧显示名称</Label>
+                <Input 
+                  placeholder="如: Assigned Aircraft"
+                  value={selectedLinkType.targetDisplayName || ""} 
+                  onChange={(e) => updateLinkType(selectedLinkType.id, { targetDisplayName: e.target.value })} 
+                  className="bg-[#0d0d0d] border-[#2d2d2d]" 
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-[#6b6b6b]">目标侧复数显示名称 (用于 N 侧)</Label>
+                <Input 
+                  placeholder="如: Scheduled Flights"
+                  value={selectedLinkType.targetPluralDisplayName || ""} 
+                  onChange={(e) => updateLinkType(selectedLinkType.id, { targetPluralDisplayName: e.target.value })} 
+                  className="bg-[#0d0d0d] border-[#2d2d2d]" 
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-[#6b6b6b]">目标侧 API 名称</Label>
+                <Input 
+                  placeholder="如: assignedAircraft"
+                  value={selectedLinkType.targetApiName || ""} 
+                  onChange={(e) => updateLinkType(selectedLinkType.id, { targetApiName: e.target.value })} 
+                  className="bg-[#0d0d0d] border-[#2d2d2d] font-mono text-xs" 
+                />
+              </div>
+            </div>
+
+            <Separator className="bg-[#2d2d2d]" />
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium text-orange-400 flex items-center gap-2">
+                起始侧配置 (从 {targetType?.displayName || "Target"} 回 {sourceType?.displayName || "Source"})
+              </h3>
+              <div className="space-y-2">
+                <Label className="text-xs text-[#6b6b6b]">起始侧显示名称</Label>
+                <Input 
+                  value={selectedLinkType.sourceDisplayName || ""} 
+                  onChange={(e) => updateLinkType(selectedLinkType.id, { sourceDisplayName: e.target.value })} 
+                  className="bg-[#0d0d0d] border-[#2d2d2d]" 
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-[#6b6b6b]">起始侧复数显示名称 (用于 N 侧)</Label>
+                <Input 
+                  value={selectedLinkType.sourcePluralDisplayName || ""} 
+                  onChange={(e) => updateLinkType(selectedLinkType.id, { sourcePluralDisplayName: e.target.value })} 
+                  className="bg-[#0d0d0d] border-[#2d2d2d]" 
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-[#6b6b6b]">起始侧 API 名称 (逆向引用)</Label>
+                <Input 
+                  placeholder="如: flights"
+                  value={selectedLinkType.sourceApiName || selectedLinkType.inverseLinkName || ""} 
+                  onChange={(e) => updateLinkType(selectedLinkType.id, { sourceApiName: e.target.value, inverseLinkName: e.target.value })} 
+                  className="bg-[#0d0d0d] border-[#2d2d2d] font-mono text-xs" 
+                />
+              </div>
             </div>
           </div>
         </ScrollArea>

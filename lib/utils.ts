@@ -35,6 +35,15 @@ export function toPascalCase(str: string): string {
     .replace(/\s+/g, '');
 }
 
+export function toSnakeCase(str: string): string {
+  return str
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[\s\-]+/g, "_")
+    .replace(/[^a-zA-Z0-9_]/g, "_")
+    .replace(/__+/g, "_")
+    .toLowerCase();
+}
+
 // Format date
 export function formatDate(date: string | Date): string {
   const d = typeof date === 'string' ? new Date(date) : date;

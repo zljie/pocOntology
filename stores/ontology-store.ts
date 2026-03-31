@@ -26,6 +26,9 @@ import {
   ERP_AI_MODELS,
   ERP_ANALYSIS_INSIGHTS,
 } from '@/lib/types/ontology-erp-sample';
+import { MetaCore, MetaScenario, MetaSnapshot, stableHash } from '@/lib/meta/meta-core';
+import { OrmMapping } from '@/lib/orm/orm-mapping';
+import { buildDefaultOrmMapping } from '@/lib/orm/postgres';
 import { generateId } from '@/lib/utils';
 
 interface OntologyStore {
@@ -37,6 +40,9 @@ interface OntologyStore {
   businessRules: BusinessRule[];
   aiModels: AIModel[];
   analysisInsights: AnalysisInsight[];
+  scenario: MetaScenario;
+  metaSnapshots: MetaSnapshot[];
+  ormMapping: OrmMapping | null;
   
   // State
   isLoading: boolean;
@@ -93,6 +99,13 @@ interface OntologyStore {
   loadSampleData: (scenario?: 'library' | 'erp') => void;
   clearAll: () => void;
   updateLastSaved: () => void;
+  replaceAll: (meta: MetaCore) => void;
+  createMetaSnapshot: (name?: string) => MetaSnapshot;
+  deleteMetaSnapshot: (id: string) => void;
+  resetOrmMapping: () => void;
+  updateOrmTable: (objectTypeId: string, updates: Partial<OrmMapping['tables'][string]>) => void;
+  updateOrmColumn: (objectTypeId: string, propertyId: string, updates: Partial<OrmMapping['tables'][string]['columns'][string]>) => void;
+  updateOrmLink: (linkTypeId: string, updates: Partial<OrmMapping['links'][string]>) => void;
 }
 
 export const useOntologyStore = create<OntologyStore>()(
@@ -106,6 +119,18 @@ export const useOntologyStore = create<OntologyStore>()(
       businessRules: [],
       aiModels: [],
       analysisInsights: [],
+      scenario: 'custom',
+      metaSnapshots: [],
+      ormMapping: buildDefaultOrmMapping({
+        scenario: 'custom',
+        objectTypes: [],
+        linkTypes: [],
+        actionTypes: [],
+        dataFlows: [],
+        businessRules: [],
+        aiModels: [],
+        analysisInsights: [],
+      }),
       isLoading: false,
       lastSaved: null,
 
@@ -418,6 +443,17 @@ export const useOntologyStore = create<OntologyStore>()(
             businessRules: ERP_BUSINESS_RULES,
             aiModels: ERP_AI_MODELS,
             analysisInsights: ERP_ANALYSIS_INSIGHTS,
+            scenario: 'erp',
+            ormMapping: buildDefaultOrmMapping({
+              scenario: 'erp',
+              objectTypes: ERP_OBJECT_TYPES,
+              linkTypes: ERP_LINK_TYPES,
+              actionTypes: ERP_ACTION_TYPES,
+              dataFlows: ERP_DATA_FLOWS,
+              businessRules: ERP_BUSINESS_RULES,
+              aiModels: ERP_AI_MODELS,
+              analysisInsights: ERP_ANALYSIS_INSIGHTS,
+            }),
             lastSaved: new Date().toISOString(),
           });
         } else {
@@ -429,6 +465,17 @@ export const useOntologyStore = create<OntologyStore>()(
             businessRules: SAMPLE_BUSINESS_RULES,
             aiModels: SAMPLE_AI_MODELS,
             analysisInsights: SAMPLE_ANALYSIS_INSIGHTS,
+            scenario: 'library',
+            ormMapping: buildDefaultOrmMapping({
+              scenario: 'library',
+              objectTypes: SAMPLE_OBJECT_TYPES,
+              linkTypes: SAMPLE_LINK_TYPES,
+              actionTypes: SAMPLE_ACTION_TYPES,
+              dataFlows: SAMPLE_DATA_FLOWS,
+              businessRules: SAMPLE_BUSINESS_RULES,
+              aiModels: SAMPLE_AI_MODELS,
+              analysisInsights: SAMPLE_ANALYSIS_INSIGHTS,
+            }),
             lastSaved: new Date().toISOString(),
           });
         }
@@ -443,12 +490,130 @@ export const useOntologyStore = create<OntologyStore>()(
           businessRules: [],
           aiModels: [],
           analysisInsights: [],
+          scenario: 'custom',
+          ormMapping: buildDefaultOrmMapping({
+            scenario: 'custom',
+            objectTypes: [],
+            linkTypes: [],
+            actionTypes: [],
+            dataFlows: [],
+            businessRules: [],
+            aiModels: [],
+            analysisInsights: [],
+          }),
           lastSaved: null,
         });
       },
 
       updateLastSaved: () => {
         set({ lastSaved: new Date().toISOString() });
+      },
+
+      replaceAll: (meta) => {
+        set({
+          objectTypes: meta.objectTypes || [],
+          linkTypes: meta.linkTypes || [],
+          actionTypes: meta.actionTypes || [],
+          dataFlows: meta.dataFlows || [],
+          businessRules: meta.businessRules || [],
+          aiModels: meta.aiModels || [],
+          analysisInsights: meta.analysisInsights || [],
+          scenario: meta.scenario || 'custom',
+          ormMapping: buildDefaultOrmMapping({
+            scenario: meta.scenario || 'custom',
+            objectTypes: meta.objectTypes || [],
+            linkTypes: meta.linkTypes || [],
+            actionTypes: meta.actionTypes || [],
+            dataFlows: meta.dataFlows || [],
+            businessRules: meta.businessRules || [],
+            aiModels: meta.aiModels || [],
+            analysisInsights: meta.analysisInsights || [],
+          }),
+          lastSaved: new Date().toISOString(),
+        });
+      },
+
+      createMetaSnapshot: (name) => {
+        const now = new Date().toISOString();
+        const meta: MetaCore = {
+          scenario: get().scenario,
+          objectTypes: get().objectTypes,
+          linkTypes: get().linkTypes,
+          actionTypes: get().actionTypes,
+          dataFlows: get().dataFlows,
+          businessRules: get().businessRules,
+          aiModels: get().aiModels,
+          analysisInsights: get().analysisInsights,
+        };
+        const snapshot: MetaSnapshot = {
+          id: generateId(),
+          name: name?.trim() ? name.trim() : `snapshot-${now.slice(0, 19)}`,
+          createdAt: now,
+          scenario: meta.scenario,
+          metaHash: stableHash(meta),
+          meta,
+        };
+        set((state) => ({
+          metaSnapshots: [snapshot, ...state.metaSnapshots].slice(0, 20),
+        }));
+        return snapshot;
+      },
+
+      deleteMetaSnapshot: (id) => {
+        set((state) => ({
+          metaSnapshots: state.metaSnapshots.filter((s) => s.id !== id),
+        }));
+      },
+
+      resetOrmMapping: () => {
+        const meta: MetaCore = {
+          scenario: get().scenario,
+          objectTypes: get().objectTypes,
+          linkTypes: get().linkTypes,
+          actionTypes: get().actionTypes,
+          dataFlows: get().dataFlows,
+          businessRules: get().businessRules,
+          aiModels: get().aiModels,
+          analysisInsights: get().analysisInsights,
+        };
+        set({ ormMapping: buildDefaultOrmMapping(meta) });
+      },
+
+      updateOrmTable: (objectTypeId, updates) => {
+        set((state) => {
+          if (!state.ormMapping) return state as any;
+          const next = { ...state.ormMapping, tables: { ...state.ormMapping.tables } };
+          const cur = next.tables[objectTypeId];
+          if (!cur) return state as any;
+          next.tables[objectTypeId] = { ...cur, ...updates };
+          return { ormMapping: next } as any;
+        });
+      },
+
+      updateOrmColumn: (objectTypeId, propertyId, updates) => {
+        set((state) => {
+          if (!state.ormMapping) return state as any;
+          const next = { ...state.ormMapping, tables: { ...state.ormMapping.tables } };
+          const cur = next.tables[objectTypeId];
+          if (!cur) return state as any;
+          const columns = { ...cur.columns };
+          const col = columns[propertyId];
+          if (!col) return state as any;
+          columns[propertyId] = { ...col, ...updates };
+          next.tables[objectTypeId] = { ...cur, columns };
+          return { ormMapping: next } as any;
+        });
+      },
+
+      updateOrmLink: (linkTypeId, updates) => {
+        set((state) => {
+          if (!state.ormMapping) return state as any;
+          const next = { ...state.ormMapping, links: { ...state.ormMapping.links } };
+          const cur = next.links[linkTypeId];
+          if (!cur) return state as any;
+          next.links[linkTypeId] = { ...cur, ...updates };
+          return { ormMapping: next } as any;
+        });
       },
     }),
     {
@@ -461,6 +626,9 @@ export const useOntologyStore = create<OntologyStore>()(
         businessRules: state.businessRules,
         aiModels: state.aiModels,
         analysisInsights: state.analysisInsights,
+        scenario: state.scenario,
+        metaSnapshots: state.metaSnapshots,
+        ormMapping: state.ormMapping,
         lastSaved: state.lastSaved,
       }),
     }

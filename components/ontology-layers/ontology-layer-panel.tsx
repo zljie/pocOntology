@@ -59,6 +59,17 @@ import { useUIStore } from "@/stores";
 import { OntologyLayer, ONTOLOGY_LAYER_INFO } from "@/lib/types/ontology";
 import { cn } from "@/lib/utils";
 import { CreateObjectTypeDialog } from "@/components/object-type-manager/create-object-type-dialog";
+import { CreateLinkTypeDialog } from "@/components/object-type-manager/create-link-type-dialog";
+import {
+  CreateActionTypeDialog,
+  CreateDataFlowDialog,
+  CreateBusinessRuleDialog,
+  CreateAIModelDialog,
+  CreateAnalysisInsightDialog,
+} from "@/components/ontology-layers/create-entity-dialogs";
+import { EntityTypeAIAssistantDrawer } from "@/components/ontology-layers/entity-type-ai-assistant-drawer";
+import { ActionTypeAIAssistantDrawer } from "@/components/ontology-layers/action-type-ai-assistant-drawer";
+import { LinkTypeAIAssistantDrawer } from "@/components/ontology-layers/link-type-ai-assistant-drawer";
 
 // Icon maps for different entity types
 const objectTypeIcons: Record<string, LucideIcon> = {
@@ -90,6 +101,15 @@ export function OntologyLayerPanel() {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createLinkDialogOpen, setCreateLinkDialogOpen] = useState(false);
+  const [createActionDialogOpen, setCreateActionDialogOpen] = useState(false);
+  const [createDataFlowDialogOpen, setCreateDataFlowDialogOpen] = useState(false);
+  const [createBusinessRuleDialogOpen, setCreateBusinessRuleDialogOpen] = useState(false);
+  const [createAIModelDialogOpen, setCreateAIModelDialogOpen] = useState(false);
+  const [createAnalysisInsightDialogOpen, setCreateAnalysisInsightDialogOpen] = useState(false);
+  const [entityAIDrawerOpen, setEntityAIDrawerOpen] = useState(false);
+  const [actionAIDrawerOpen, setActionAIDrawerOpen] = useState(false);
+  const [linkAIDrawerOpen, setLinkAIDrawerOpen] = useState(false);
 
   const {
     objectTypes,
@@ -100,7 +120,9 @@ export function OntologyLayerPanel() {
     aiModels,
     analysisInsights,
     deleteObjectType,
+    deleteLinkType,
     deleteActionType,
+    deleteDataFlow,
     deleteBusinessRule,
     deleteAIModel,
     deleteAnalysisInsight,
@@ -109,13 +131,17 @@ export function OntologyLayerPanel() {
   const {
     selectedLayer,
     selectedObjectTypeId,
+    selectedLinkTypeId,
     selectedActionTypeId,
+    selectedDataFlowId,
     selectedBusinessRuleId,
     selectedAIModelId,
     selectedAnalysisInsightId,
     selectLayer,
     selectObjectType,
+    selectLinkType,
     selectActionType,
+    selectDataFlow,
     selectBusinessRule,
     selectAIModel,
     selectAnalysisInsight,
@@ -245,6 +271,7 @@ export function OntologyLayerPanel() {
                     lt.apiName.toLowerCase().includes(searchQuery.toLowerCase()))
               )}
               selectedObjectTypeId={selectedObjectTypeId}
+              selectedLinkTypeId={selectedLinkTypeId}
               expandedIds={expandedIds}
               onToggleExpand={toggleExpand}
               onSelectObjectType={(id) => {
@@ -252,6 +279,16 @@ export function OntologyLayerPanel() {
                 openRightPanel();
               }}
               onDeleteObjectType={deleteObjectType}
+              onSelectLinkType={(id) => {
+                selectObjectType(null);
+                selectLinkType(id);
+                openRightPanel();
+              }}
+              onDeleteLinkType={deleteLinkType}
+              onOpenCreateObjectDialog={() => setCreateDialogOpen(true)}
+              onOpenCreateLinkDialog={() => setCreateLinkDialogOpen(true)}
+              onOpenAIAssistant={() => setEntityAIDrawerOpen(true)}
+              onOpenLinkAIAssistant={() => setLinkAIDrawerOpen(true)}
             />
           )}
 
@@ -274,7 +311,15 @@ export function OntologyLayerPanel() {
                 selectActionType(id);
                 openRightPanel();
               }}
+              onSelectDataFlow={(id) => {
+                selectDataFlow(id);
+                openRightPanel();
+              }}
               onDeleteActionType={deleteActionType}
+              onDeleteDataFlow={deleteDataFlow}
+              onOpenCreateActionDialog={() => setCreateActionDialogOpen(true)}
+              onOpenCreateDataFlowDialog={() => setCreateDataFlowDialogOpen(true)}
+              onOpenActionAIAssistant={() => setActionAIDrawerOpen(true)}
             />
           )}
 
@@ -315,6 +360,9 @@ export function OntologyLayerPanel() {
               onDeleteBusinessRule={deleteBusinessRule}
               onDeleteAIModel={deleteAIModel}
               onDeleteAnalysisInsight={deleteAnalysisInsight}
+              onOpenCreateBusinessRuleDialog={() => setCreateBusinessRuleDialogOpen(true)}
+              onOpenCreateAIModelDialog={() => setCreateAIModelDialogOpen(true)}
+              onOpenCreateAnalysisInsightDialog={() => setCreateAnalysisInsightDialogOpen(true)}
             />
           )}
         </div>
@@ -325,6 +373,42 @@ export function OntologyLayerPanel() {
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
       />
+      <CreateLinkTypeDialog
+        open={createLinkDialogOpen}
+        onOpenChange={setCreateLinkDialogOpen}
+      />
+      <CreateActionTypeDialog
+        open={createActionDialogOpen}
+        onOpenChange={setCreateActionDialogOpen}
+      />
+      <CreateDataFlowDialog
+        open={createDataFlowDialogOpen}
+        onOpenChange={setCreateDataFlowDialogOpen}
+      />
+      <CreateBusinessRuleDialog
+        open={createBusinessRuleDialogOpen}
+        onOpenChange={setCreateBusinessRuleDialogOpen}
+      />
+      <CreateAIModelDialog
+        open={createAIModelDialogOpen}
+        onOpenChange={setCreateAIModelDialogOpen}
+      />
+      <CreateAnalysisInsightDialog
+        open={createAnalysisInsightDialogOpen}
+        onOpenChange={setCreateAnalysisInsightDialogOpen}
+      />
+      <EntityTypeAIAssistantDrawer
+        open={entityAIDrawerOpen}
+        onOpenChange={setEntityAIDrawerOpen}
+      />
+      <ActionTypeAIAssistantDrawer
+        open={actionAIDrawerOpen}
+        onOpenChange={setActionAIDrawerOpen}
+      />
+      <LinkTypeAIAssistantDrawer
+        open={linkAIDrawerOpen}
+        onOpenChange={setLinkAIDrawerOpen}
+      />
     </div>
   );
 }
@@ -334,20 +418,34 @@ interface SemanticLayerContentProps {
   objectTypes: any[];
   linkTypes: any[];
   selectedObjectTypeId: string | null;
+  selectedLinkTypeId: string | null;
   expandedIds: Set<string>;
   onToggleExpand: (id: string) => void;
   onSelectObjectType: (id: string) => void;
   onDeleteObjectType: (id: string) => void;
+  onSelectLinkType: (id: string) => void;
+  onDeleteLinkType: (id: string) => void;
+  onOpenCreateObjectDialog: () => void;
+  onOpenCreateLinkDialog: () => void;
+  onOpenAIAssistant: () => void;
+  onOpenLinkAIAssistant: () => void;
 }
 
 function SemanticLayerContent({
   objectTypes,
   linkTypes,
   selectedObjectTypeId,
+  selectedLinkTypeId,
   expandedIds,
   onToggleExpand,
   onSelectObjectType,
   onDeleteObjectType,
+  onSelectLinkType,
+  onDeleteLinkType,
+  onOpenCreateObjectDialog,
+  onOpenCreateLinkDialog,
+  onOpenAIAssistant,
+  onOpenLinkAIAssistant,
 }: SemanticLayerContentProps) {
   const objectTypeMap = new Map(objectTypes.map((ot) => [ot.id, ot]));
 
@@ -364,6 +462,28 @@ function SemanticLayerContent({
           >
             {objectTypes.length}
           </Badge>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-[#6b6b6b] hover:text-white"
+            onClick={onOpenCreateObjectDialog}
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[11px] text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
+                onClick={onOpenAIAssistant}
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1 text-[#8B5CF6]" />
+                AI 辅助
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>三步引导生成对象类型与属性</TooltipContent>
+          </Tooltip>
         </div>
 
         {objectTypes.length === 0 ? (
@@ -480,13 +600,35 @@ function SemanticLayerContent({
           >
             {linkTypes.length}
           </Badge>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-[#6b6b6b] hover:text-white"
+            onClick={onOpenCreateLinkDialog}
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[11px] text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
+                onClick={onOpenLinkAIAssistant}
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1 text-[#8B5CF6]" />
+                AI 辅助
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>推导关系并一键生成</TooltipContent>
+          </Tooltip>
         </div>
 
         {linkTypes.length === 0 ? (
           <EmptyState
             icon={GitBranch}
             message="暂无关系类型"
-            description="在画布上拖拽创建关系"
+            description="在画布上拖拽创建关系，或点击上方 + 号新建"
           />
         ) : (
           <div className="space-y-1">
@@ -496,36 +638,40 @@ function SemanticLayerContent({
 
               return (
                 <div
-                  key={linkType.id}
-                  className="flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-[#2d2d2d] border border-transparent transition-colors"
-                >
-                  <ArrowRight className="w-3.5 h-3.5 text-[#3B82F6] flex-shrink-0" />
+                key={linkType.id}
+                className={cn(
+                  "flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-[#2d2d2d] border border-transparent transition-colors",
+                  selectedLinkTypeId === linkType.id && "bg-[#3B82F6]/10 border-[#3B82F6]/30"
+                )}
+                onClick={() => onSelectLinkType(linkType.id)}
+              >
+                <ArrowRight className="w-3.5 h-3.5 text-[#3B82F6] flex-shrink-0" />
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-medium text-white truncate">
-                        {linkType.displayName}
-                      </span>
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] px-1 py-0 font-mono"
-                      >
-                        {linkType.cardinality}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-1 text-[10px] text-[#6b6b6b] mt-0.5">
-                      <span className="font-mono truncate max-w-[80px]">
-                        {sourceType?.displayName || "?"}
-                      </span>
-                      <span>→</span>
-                      <span className="font-mono truncate max-w-[80px]">
-                        {targetType?.displayName || "?"}
-                      </span>
-                    </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-medium text-white truncate">
+                      {linkType.displayName}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] px-1 py-0 font-mono"
+                    >
+                      {linkType.cardinality}
+                    </Badge>
                   </div>
-
-                  <EntityActions onDelete={() => {}} />
+                  <div className="flex items-center gap-1 text-[10px] text-[#6b6b6b] mt-0.5">
+                    <span className="font-mono truncate max-w-[80px]">
+                      {sourceType?.displayName || "?"}
+                    </span>
+                    <span>→</span>
+                    <span className="font-mono truncate max-w-[80px]">
+                      {targetType?.displayName || "?"}
+                    </span>
+                  </div>
                 </div>
+
+                <EntityActions onDelete={() => onDeleteLinkType(linkType.id)} />
+              </div>
               );
             })}
           </div>
@@ -543,7 +689,12 @@ interface KineticLayerContentProps {
   expandedIds: Set<string>;
   onToggleExpand: (id: string) => void;
   onSelectActionType: (id: string) => void;
+  onSelectDataFlow: (id: string) => void;
   onDeleteActionType: (id: string) => void;
+  onDeleteDataFlow: (id: string) => void;
+  onOpenCreateActionDialog: () => void;
+  onOpenCreateDataFlowDialog: () => void;
+  onOpenActionAIAssistant: () => void;
 }
 
 function KineticLayerContent({
@@ -553,7 +704,12 @@ function KineticLayerContent({
   expandedIds,
   onToggleExpand,
   onSelectActionType,
+  onSelectDataFlow,
   onDeleteActionType,
+  onDeleteDataFlow,
+  onOpenCreateActionDialog,
+  onOpenCreateDataFlowDialog,
+  onOpenActionAIAssistant,
 }: KineticLayerContentProps) {
   return (
     <div className="space-y-4">
@@ -568,6 +724,28 @@ function KineticLayerContent({
           >
             {actionTypes.length}
           </Badge>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-[#6b6b6b] hover:text-white"
+            onClick={onOpenCreateActionDialog}
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[11px] text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
+                onClick={onOpenActionAIAssistant}
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1 text-[#8B5CF6]" />
+                AI 辅助
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>两轮沟通生成 CRUD 动作</TooltipContent>
+          </Tooltip>
         </div>
 
         {actionTypes.length === 0 ? (
@@ -712,6 +890,14 @@ function KineticLayerContent({
           >
             {dataFlows.length}
           </Badge>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-[#6b6b6b] hover:text-white"
+            onClick={onOpenCreateDataFlowDialog}
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </Button>
         </div>
 
         {dataFlows.length === 0 ? (
@@ -726,6 +912,7 @@ function KineticLayerContent({
               <div
                 key={dataFlow.id}
                 className="flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer hover:bg-[#2d2d2d] border border-transparent transition-colors"
+                onClick={() => onSelectDataFlow(dataFlow.id)}
               >
                 <ArrowRight className="w-3.5 h-3.5 text-[#10B981] flex-shrink-0" />
 
@@ -744,7 +931,7 @@ function KineticLayerContent({
                   </div>
                 </div>
 
-                <EntityActions onDelete={() => {}} />
+                <EntityActions onDelete={() => onDeleteDataFlow(dataFlow.id)} />
               </div>
             ))}
           </div>
@@ -770,6 +957,9 @@ interface DynamicLayerContentProps {
   onDeleteBusinessRule: (id: string) => void;
   onDeleteAIModel: (id: string) => void;
   onDeleteAnalysisInsight: (id: string) => void;
+  onOpenCreateBusinessRuleDialog: () => void;
+  onOpenCreateAIModelDialog: () => void;
+  onOpenCreateAnalysisInsightDialog: () => void;
 }
 
 function DynamicLayerContent({
@@ -787,6 +977,9 @@ function DynamicLayerContent({
   onDeleteBusinessRule,
   onDeleteAIModel,
   onDeleteAnalysisInsight,
+  onOpenCreateBusinessRuleDialog,
+  onOpenCreateAIModelDialog,
+  onOpenCreateAnalysisInsightDialog,
 }: DynamicLayerContentProps) {
   return (
     <div className="space-y-4">
@@ -801,6 +994,14 @@ function DynamicLayerContent({
           >
             {businessRules.length}
           </Badge>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-[#6b6b6b] hover:text-white"
+            onClick={onOpenCreateBusinessRuleDialog}
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </Button>
         </div>
 
         {businessRules.length === 0 ? (
@@ -921,6 +1122,14 @@ function DynamicLayerContent({
           >
             {aiModels.length}
           </Badge>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-[#6b6b6b] hover:text-white"
+            onClick={onOpenCreateAIModelDialog}
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </Button>
         </div>
 
         {aiModels.length === 0 ? (
@@ -1038,6 +1247,14 @@ function DynamicLayerContent({
           >
             {analysisInsights.length}
           </Badge>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-[#6b6b6b] hover:text-white"
+            onClick={onOpenCreateAnalysisInsightDialog}
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </Button>
         </div>
 
         {analysisInsights.length === 0 ? (

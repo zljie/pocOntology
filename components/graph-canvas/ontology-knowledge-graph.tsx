@@ -109,10 +109,11 @@ export function OntologyKnowledgeGraph() {
   const handleEdgeClick = React.useCallback(
     (edge: InternalGraphEdge) => {
       selectEdge(edge.id);
+      selectObjectType(null); // Clear object selection when selecting an edge
       selectLinkType(edge.id);
       openRightPanel();
     },
-    [openRightPanel, selectEdge, selectLinkType]
+    [openRightPanel, selectEdge, selectObjectType, selectLinkType]
   );
 
   if (!mounted || !GraphCanvas || !theme) {

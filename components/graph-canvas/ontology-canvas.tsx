@@ -212,10 +212,11 @@ export function OntologyCanvas() {
   const onEdgeClick = useCallback(
     (_: React.MouseEvent, edge: Edge) => {
       selectEdge(edge.id);
+      selectObjectType(null); // Clear object selection when selecting an edge
       selectLinkType(edge.id);
       openRightPanel();
     },
-    [openRightPanel, selectEdge, selectLinkType]
+    [openRightPanel, selectEdge, selectObjectType, selectLinkType]
   );
 
   const onPaneClick = useCallback(() => {

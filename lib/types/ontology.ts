@@ -120,15 +120,35 @@ export type Cardinality = 'ONE_TO_ONE' | 'ONE_TO_MANY' | 'MANY_TO_ONE' | 'MANY_T
  */
 export interface LinkType {
   id: string;
+  // 全局/主要标识
   apiName: string;
   displayName: string;
   description?: string;
+  
+  // 起始对象 (Source)
   sourceTypeId: string;
+  
+  // 目标对象 (Target)
   targetTypeId: string;
+  
+  // 基数
   cardinality: Cardinality;
-  foreignKeyPropertyId: string; // Property ID in source type
-  inverseLinkName?: string; // Name from target to source
-  properties: Property[]; // Link properties
+  
+  // 键关联 (主要支持 1:1, 1:N 时的外键；M:N 由数据源/关联表映射)
+  foreignKeyPropertyId: string; // Property ID in source type or target type
+  
+  // 目标侧显示配置 (表示从 Source -> Target)
+  targetDisplayName?: string; // 目标侧单数显示名称 (如 Assigned Aircraft)
+  targetPluralDisplayName?: string; // 目标侧复数显示名称 (如 Scheduled Flights)
+  targetApiName?: string; // 目标侧在代码中的引用名 (如 assignedAircraft)
+  
+  // 起始侧显示配置 (表示从 Target -> Source，即逆向关系)
+  sourceDisplayName?: string; // 起始侧单数显示名称
+  sourcePluralDisplayName?: string; // 起始侧复数显示名称
+  sourceApiName?: string; // 起始侧代码引用名 (即以前的 inverseLinkName)
+  inverseLinkName?: string; // 兼容老字段，逐步迁移到 sourceApiName
+  
+  properties: Property[]; // Link properties (关系自身属性)
   visibility: 'PRIVATE' | 'PROJECT' | 'GLOBAL';
   // 三层架构
   layer: OntologyLayer;

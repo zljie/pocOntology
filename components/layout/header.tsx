@@ -12,6 +12,7 @@ import {
   Sparkles,
   X,
   Boxes,
+  FilePlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,17 +24,37 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useOntologyStore } from "@/stores";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useOntologyStore, useSelectionStore, useProposalStore } from "@/stores";
 import { useUIStore } from "@/stores";
 import { SemanticQueryInput } from "@/components/semantic-query/semantic-query-input";
 import { BusinessScenarioSandbox } from "@/components/scenario-sandbox/business-scenario-sandbox";
+import { MetaToolboxSheet } from "@/components/meta/meta-toolbox-sheet";
 
 export function Header() {
-  const { objectTypes, linkTypes, loadSampleData, clearAll } = useOntologyStore();
+  const { objectTypes, linkTypes, loadSampleData, clearAll: clearOntology } = useOntologyStore();
+  const { clearAll: clearSelection } = useSelectionStore();
+  const { clearAll: clearProposals } = useProposalStore();
   const { setShowImportDialog, showProposalBanner } = useUIStore();
   const [showSemanticQuery, setShowSemanticQuery] = useState(false);
   const [showScenarioSandbox, setShowScenarioSandbox] = useState(false);
+  const [showMetaToolbox, setShowMetaToolbox] = useState(false);
+  const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
   const pendingCount = objectTypes.length;
+
+  const handleNewCanvas = () => {
+    clearOntology();
+    clearSelection();
+    clearProposals();
+    setShowNewCanvasDialog(false);
+  };
 
   return (
     <header className="h-14 border-b bg-[#161614] flex items-center justify-between px-4">
@@ -120,6 +141,7 @@ export function Header() {
                 variant="ghost"
                 size="icon"
                 className="text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
+                onClick={() => setShowMetaToolbox(true)}
               >
                 <Download className="w-4 h-4" />
               </Button>
@@ -128,6 +150,16 @@ export function Header() {
           </Tooltip>
 
           <div className="w-px h-6 bg-[#3d3d3d] mx-1" />
+
+          <Button
+            variant="default"
+            size="sm"
+            className="bg-gradient-to-r from-[#3B82F6] to-[#2563EB] hover:opacity-90 text-white"
+            onClick={() => setShowNewCanvasDialog(true)}
+          >
+            <FilePlus className="w-4 h-4 mr-1" />
+            新建本体
+          </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -156,20 +188,6 @@ export function Header() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
-                onClick={() => clearAll()}
-              >
-                清空
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>清空所有数据</TooltipContent>
-          </Tooltip>
 
           <div className="w-px h-6 bg-[#3d3d3d] mx-1" />
 
@@ -224,6 +242,35 @@ export function Header() {
           <BusinessScenarioSandbox />
         </SheetContent>
       </Sheet>
+
+      <MetaToolboxSheet open={showMetaToolbox} onOpenChange={setShowMetaToolbox} />
+
+      <Dialog open={showNewCanvasDialog} onOpenChange={setShowNewCanvasDialog}>
+        <DialogContent className="sm:max-w-[425px] bg-[#161614] border-[#3d3d3d] text-white">
+          <DialogHeader>
+            <DialogTitle>新建本体画布</DialogTitle>
+            <DialogDescription className="text-[#a0a0a0]">
+              此操作将清空当前所有未导出的本体数据（包括对象类型、关系类型、动作、规则等）。确认要继续吗？
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowNewCanvasDialog(false)}
+              className="bg-transparent border-[#3d3d3d] text-white hover:bg-[#2d2d2d]"
+            >
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleNewCanvas}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              确认清空并新建
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </header>
   );
 }
