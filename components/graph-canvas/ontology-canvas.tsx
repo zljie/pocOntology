@@ -19,6 +19,8 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useOntologyStore } from "@/stores";
+import { upsertMetaToNeo4jClient } from "@/lib/neo4j/client";
+import type { MetaCore } from "@/lib/meta/meta-core";
 import { useSelectionStore } from "@/stores";
 import { useUIStore } from "@/stores";
 import { ObjectTypeNode } from "./object-type-node";
@@ -64,7 +66,8 @@ function generateLayout(objectTypes: ObjectType[]): Record<string, { x: number; 
 }
 
 export function OntologyCanvas() {
-  const { objectTypes, linkTypes, addObjectType, addLinkType } = useOntologyStore();
+  const { objectTypes, linkTypes, addLinkType, addObjectType, neo4jProject, scenario } =
+    useOntologyStore();
   const {
     selectedNodeId,
     semanticHighlightedNodeIds,
@@ -223,14 +226,13 @@ export function OntologyCanvas() {
     clearAll();
   }, [clearAll]);
 
-  const handleAddNode = useCallback(() => {
-    const id = generateId();
+  const handleAddNode = useCallback(async () => {
     const cols = Math.ceil(Math.sqrt(objectTypes.length + 1));
     const index = objectTypes.length;
     const col = index % cols;
     const row = Math.floor(index / cols);
 
-    addObjectType({
+    const newOt = addObjectType({
       apiName: "NewObject",
       displayName: "新对象",
       visibility: "PROJECT",
@@ -239,7 +241,29 @@ export function OntologyCanvas() {
       properties: [],
       layer: "SEMANTIC",
     });
-  }, [objectTypes, addObjectType]);
+
+    if (neo4jProject) {
+      try {
+        const meta: MetaCore = {
+          scenario,
+          objectTypes: [newOt],
+          linkTypes: [],
+          actionTypes: [],
+          dataFlows: [],
+          businessRules: [],
+          aiModels: [],
+          analysisInsights: [],
+        };
+        await upsertMetaToNeo4jClient({
+          database: neo4jProject.dbName,
+          scenario: neo4jProject.dbName,
+          meta,
+        });
+      } catch {
+        return;
+      }
+    }
+  }, [objectTypes, addObjectType, neo4jProject, scenario]);
 
   return (
     <div className="relative w-full h-full">

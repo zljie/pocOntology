@@ -21,6 +21,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useOntologyStore } from "@/stores";
 import { toPascalCase, isPascalCase } from "@/lib/utils";
+import { upsertMetaToNeo4jClient } from "@/lib/neo4j/client";
+import type { MetaCore } from "@/lib/meta/meta-core";
 
 interface CreateObjectTypeDialogProps {
   open: boolean;
@@ -39,7 +41,7 @@ export function CreateObjectTypeDialog({
   onOpenChange,
   editObjectType,
 }: CreateObjectTypeDialogProps) {
-  const { addObjectType, updateObjectType } = useOntologyStore();
+  const { addObjectType, updateObjectType, neo4jProject, scenario } = useOntologyStore();
   const [displayName, setDisplayName] = useState(
     editObjectType?.displayName || ""
   );
@@ -50,6 +52,8 @@ export function CreateObjectTypeDialog({
   const [visibility, setVisibility] = useState<
     "PRIVATE" | "PROJECT" | "GLOBAL"
   >(editObjectType?.visibility || "PROJECT");
+  const [neo4jError, setNeo4jError] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const handleDisplayNameChange = (value: string) => {
     setDisplayName(value);
@@ -63,8 +67,9 @@ export function CreateObjectTypeDialog({
     apiName.trim() &&
     isPascalCase(apiName);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!isValid) return;
+    setNeo4jError(null);
 
     if (editObjectType) {
       updateObjectType(editObjectType.id, {
@@ -74,7 +79,7 @@ export function CreateObjectTypeDialog({
         visibility,
       });
     } else {
-      addObjectType({
+      const newOt = addObjectType({
         displayName,
         apiName,
         description,
@@ -84,6 +89,33 @@ export function CreateObjectTypeDialog({
         properties: [],
         layer: "SEMANTIC",
       });
+
+      if (neo4jProject) {
+        setIsSyncing(true);
+        try {
+          const meta: MetaCore = {
+            scenario,
+            objectTypes: [newOt],
+            linkTypes: [],
+            actionTypes: [],
+            dataFlows: [],
+            businessRules: [],
+            aiModels: [],
+            analysisInsights: [],
+          };
+          await upsertMetaToNeo4jClient({
+            database: neo4jProject.dbName,
+            scenario: neo4jProject.dbName,
+            meta,
+          });
+        } catch (e: any) {
+          setNeo4jError(e?.message || "写入 Neo4j 失败");
+          setIsSyncing(false);
+          return;
+        } finally {
+          setIsSyncing(false);
+        }
+      }
     }
 
     // Reset form
@@ -177,6 +209,7 @@ export function CreateObjectTypeDialog({
               </SelectContent>
             </Select>
           </div>
+          {neo4jError && <div className="text-sm text-red-400">{neo4jError}</div>}
         </div>
 
         <DialogFooter>
@@ -184,15 +217,16 @@ export function CreateObjectTypeDialog({
             variant="outline"
             onClick={() => onOpenChange(false)}
             className="border-[#2d2d2d] text-[#a0a0a0]"
+            disabled={isSyncing}
           >
             取消
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!isValid}
+            disabled={!isValid || isSyncing}
             className="bg-[#5b8def] hover:bg-[#4a7ce0]"
           >
-            {editObjectType ? "保存" : "创建"}
+            {isSyncing ? "同步中…" : editObjectType ? "保存" : "创建"}
           </Button>
         </DialogFooter>
       </DialogContent>

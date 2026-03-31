@@ -47,6 +47,7 @@ interface OntologyStore {
   // State
   isLoading: boolean;
   lastSaved: string | null;
+  neo4jProject: { dbName: string; displayName: string } | null;
 
   // Object Type Actions
   addObjectType: (objectType: Omit<ObjectType, 'id' | 'createdAt' | 'updatedAt'>) => ObjectType;
@@ -106,6 +107,7 @@ interface OntologyStore {
   updateOrmTable: (objectTypeId: string, updates: Partial<OrmMapping['tables'][string]>) => void;
   updateOrmColumn: (objectTypeId: string, propertyId: string, updates: Partial<OrmMapping['tables'][string]['columns'][string]>) => void;
   updateOrmLink: (linkTypeId: string, updates: Partial<OrmMapping['links'][string]>) => void;
+  setNeo4jProject: (project: { dbName: string; displayName: string } | null) => void;
 }
 
 export const useOntologyStore = create<OntologyStore>()(
@@ -133,6 +135,7 @@ export const useOntologyStore = create<OntologyStore>()(
       }),
       isLoading: false,
       lastSaved: null,
+      neo4jProject: null,
 
       // ================== Object Type Actions ==================
       addObjectType: (objectType) => {
@@ -509,6 +512,10 @@ export const useOntologyStore = create<OntologyStore>()(
         set({ lastSaved: new Date().toISOString() });
       },
 
+      setNeo4jProject: (project) => {
+        set({ neo4jProject: project });
+      },
+
       replaceAll: (meta) => {
         set({
           objectTypes: meta.objectTypes || [],
@@ -630,6 +637,7 @@ export const useOntologyStore = create<OntologyStore>()(
         metaSnapshots: state.metaSnapshots,
         ormMapping: state.ormMapping,
         lastSaved: state.lastSaved,
+        neo4jProject: state.neo4jProject,
       }),
     }
   )

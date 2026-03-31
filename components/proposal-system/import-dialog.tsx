@@ -17,6 +17,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Upload, FileText, AlertCircle, CheckCircle } from "lucide-react";
 import { useOntologyStore } from "@/stores";
 import { toPascalCase } from "@/lib/utils";
+import { upsertMetaToNeo4jClient } from "@/lib/neo4j/client";
+import type { MetaCore } from "@/lib/meta/meta-core";
 
 interface ImportDialogProps {
   open: boolean;
@@ -26,7 +28,7 @@ interface ImportDialogProps {
 type ImportStep = "upload" | "preview" | "mapping" | "complete";
 
 export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
-  const { addObjectType } = useOntologyStore();
+  const { addObjectType, neo4jProject, scenario } = useOntologyStore();
   const [step, setStep] = useState<ImportStep>("upload");
   const [jsonData, setJsonData] = useState<Record<string, unknown>[]>([]);
   const [rawJson, setRawJson] = useState("");
@@ -101,12 +103,12 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
     return types;
   }, [jsonData]);
 
-  const handleImport = useCallback(() => {
+  const handleImport = useCallback(async () => {
     // Create object type from JSON structure
     const firstRow = jsonData[0];
     const apiName = toPascalCase(Object.keys(firstRow)[0] || "ImportedData");
     
-    addObjectType({
+    const newOt = addObjectType({
       apiName,
       displayName: apiName,
       description: `从 JSON 导入的数据，共 ${jsonData.length} 条记录`,
@@ -124,8 +126,31 @@ export function ImportDialog({ open, onOpenChange }: ImportDialogProps) {
       layer: "SEMANTIC",
     });
 
+    if (neo4jProject) {
+      try {
+        const meta: MetaCore = {
+          scenario,
+          objectTypes: [newOt],
+          linkTypes: [],
+          actionTypes: [],
+          dataFlows: [],
+          businessRules: [],
+          aiModels: [],
+          analysisInsights: [],
+        };
+        await upsertMetaToNeo4jClient({
+          database: neo4jProject.dbName,
+          scenario: neo4jProject.dbName,
+          meta,
+        });
+      } catch (e: any) {
+        setError(e?.message || "写入 Neo4j 失败");
+        return;
+      }
+    }
+
     setStep("complete");
-  }, [jsonData, inferredColumns, inferredTypes, addObjectType]);
+  }, [jsonData, inferredColumns, inferredTypes, addObjectType, neo4jProject, scenario]);
 
   const handleClose = () => {
     setStep("upload");

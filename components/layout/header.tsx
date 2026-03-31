@@ -32,14 +32,35 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useOntologyStore, useSelectionStore, useProposalStore } from "@/stores";
 import { useUIStore } from "@/stores";
 import { SemanticQueryInput } from "@/components/semantic-query/semantic-query-input";
 import { BusinessScenarioSandbox } from "@/components/scenario-sandbox/business-scenario-sandbox";
 import { MetaToolboxSheet } from "@/components/meta/meta-toolbox-sheet";
+import { createNeo4jDatabaseClient, upsertMetaToNeo4jClient } from "@/lib/neo4j/client";
+import type { MetaCore } from "@/lib/meta/meta-core";
+
+function isValidNeo4jDbName(name: string) {
+  return /^[a-z][a-z0-9.-]{0,62}$/.test(name);
+}
 
 export function Header() {
-  const { objectTypes, linkTypes, loadSampleData, clearAll: clearOntology } = useOntologyStore();
+  const {
+    objectTypes,
+    linkTypes,
+    actionTypes,
+    dataFlows,
+    businessRules,
+    aiModels,
+    analysisInsights,
+    scenario,
+    loadSampleData,
+    clearAll: clearOntology,
+    neo4jProject,
+    setNeo4jProject,
+  } = useOntologyStore();
   const { clearAll: clearSelection } = useSelectionStore();
   const { clearAll: clearProposals } = useProposalStore();
   const { setShowImportDialog, showProposalBanner } = useUIStore();
@@ -47,13 +68,88 @@ export function Header() {
   const [showScenarioSandbox, setShowScenarioSandbox] = useState(false);
   const [showMetaToolbox, setShowMetaToolbox] = useState(false);
   const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
+  const [newProjectDbName, setNewProjectDbName] = useState("");
+  const [newProjectDisplayName, setNewProjectDisplayName] = useState("");
+  const [newCanvasError, setNewCanvasError] = useState<string | null>(null);
+  const [isCreatingCanvas, setIsCreatingCanvas] = useState(false);
+  const [neo4jSaveError, setNeo4jSaveError] = useState<string | null>(null);
+  const [neo4jSaveSuccess, setNeo4jSaveSuccess] = useState<string | null>(null);
+  const [isSavingNeo4j, setIsSavingNeo4j] = useState(false);
   const pendingCount = objectTypes.length;
 
-  const handleNewCanvas = () => {
-    clearOntology();
-    clearSelection();
-    clearProposals();
-    setShowNewCanvasDialog(false);
+  const handleOpenNewCanvas = () => {
+    setNewCanvasError(null);
+    setNewProjectDbName("");
+    setNewProjectDisplayName("");
+    setShowNewCanvasDialog(true);
+  };
+
+  const handleCreateCanvas = async () => {
+    const dbName = newProjectDbName.trim();
+    const displayName = newProjectDisplayName.trim();
+
+    if (!dbName) {
+      setNewCanvasError("项目名称不能为空");
+      return;
+    }
+    if (!isValidNeo4jDbName(dbName)) {
+      setNewCanvasError("项目名称不符合 Neo4j db 命名要求（小写字母开头，仅小写字母/数字/点/短横线）");
+      return;
+    }
+    if (!displayName) {
+      setNewCanvasError("显示名称不能为空");
+      return;
+    }
+
+    setIsCreatingCanvas(true);
+    setNewCanvasError(null);
+    try {
+      await createNeo4jDatabaseClient(dbName);
+
+      clearOntology();
+      clearSelection();
+      clearProposals();
+      setNeo4jProject({ dbName, displayName });
+      setShowNewCanvasDialog(false);
+    } catch (e: any) {
+      setNewCanvasError(e?.message || "创建 Neo4j 数据库失败");
+    } finally {
+      setIsCreatingCanvas(false);
+    }
+  };
+
+  const handleSaveNeo4j = async () => {
+    if (!neo4jProject) {
+      setNeo4jSaveSuccess(null);
+      setNeo4jSaveError("请先新建本体画布（Neo4j 项目）");
+      return;
+    }
+
+    setIsSavingNeo4j(true);
+    setNeo4jSaveError(null);
+    setNeo4jSaveSuccess(null);
+    try {
+      const meta: MetaCore = {
+        scenario,
+        objectTypes,
+        linkTypes,
+        actionTypes,
+        dataFlows,
+        businessRules,
+        aiModels,
+        analysisInsights,
+      };
+      await upsertMetaToNeo4jClient({
+        database: neo4jProject.dbName,
+        scenario: neo4jProject.dbName,
+        meta,
+      });
+      setNeo4jSaveSuccess("已保存到 Neo4j");
+    } catch (e: any) {
+      setNeo4jSaveError(e?.message || "保存到 Neo4j 失败");
+    } finally {
+      setIsSavingNeo4j(false);
+    }
   };
 
   return (
@@ -83,6 +179,12 @@ export function Header() {
               <GitBranch className="w-3 h-3 mr-1" />
               {linkTypes.length} 链接类型
             </Badge>
+            {neo4jProject && (
+              <Badge variant="secondary" className="bg-[#2d2d2d] text-[#a0a0a0] border-[#3d3d3d]">
+                <Database className="w-3 h-3 mr-1" />
+                {neo4jProject.displayName}（{neo4jProject.dbName}）
+              </Badge>
+            )}
           </div>
         </div>
 
@@ -92,6 +194,18 @@ export function Header() {
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-[#5b8def]/10 border border-[#5b8def]/20">
               <div className="w-2 h-2 rounded-full bg-[#5b8def] animate-pulse" />
               <span className="text-xs text-[#5b8def]">草稿已保存</span>
+            </div>
+          )}
+          {neo4jSaveSuccess && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-[#10B981]/10 border border-[#10B981]/20">
+              <div className="w-2 h-2 rounded-full bg-[#10B981]" />
+              <span className="text-xs text-[#10B981]">{neo4jSaveSuccess}</span>
+            </div>
+          )}
+          {neo4jSaveError && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-red-500/10 border border-red-500/20">
+              <div className="w-2 h-2 rounded-full bg-red-400" />
+              <span className="text-xs text-red-400">{neo4jSaveError}</span>
             </div>
           )}
         </div>
@@ -149,13 +263,29 @@ export function Header() {
             <TooltipContent>导出模型</TooltipContent>
           </Tooltip>
 
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs bg-transparent border-[#3d3d3d] text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
+                onClick={handleSaveNeo4j}
+                disabled={isSavingNeo4j}
+              >
+                <Database className="w-4 h-4" />
+                <span className="ml-1">{isSavingNeo4j ? "保存中…" : "保存Neo4j"}</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>保存到 Neo4j</TooltipContent>
+          </Tooltip>
+
           <div className="w-px h-6 bg-[#3d3d3d] mx-1" />
 
           <Button
             variant="default"
             size="sm"
             className="bg-gradient-to-r from-[#3B82F6] to-[#2563EB] hover:opacity-90 text-white"
-            onClick={() => setShowNewCanvasDialog(true)}
+            onClick={handleOpenNewCanvas}
           >
             <FilePlus className="w-4 h-4 mr-1" />
             新建本体
@@ -248,25 +378,51 @@ export function Header() {
       <Dialog open={showNewCanvasDialog} onOpenChange={setShowNewCanvasDialog}>
         <DialogContent className="sm:max-w-[425px] bg-[#161614] border-[#3d3d3d] text-white">
           <DialogHeader>
-            <DialogTitle>新建本体画布</DialogTitle>
+            <DialogTitle>新建本体画布（Neo4j 项目）</DialogTitle>
             <DialogDescription className="text-[#a0a0a0]">
-              此操作将清空当前所有未导出的本体数据（包括对象类型、关系类型、动作、规则等）。确认要继续吗？
+              创建后将清空当前画布，并在 Neo4j 中创建同名数据库；后续新增实体类会写入对应数据库。
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label className="text-[#d0d0d0]">项目名称（Neo4j dbName）</Label>
+              <Input
+                value={newProjectDbName}
+                onChange={(e) => setNewProjectDbName(e.target.value)}
+                placeholder="例如：erp_purchase"
+                className="bg-[#0d0d0d] border-[#3d3d3d] text-white placeholder:text-[#6b6b6b]"
+              />
+              <div className="text-[11px] text-[#6b6b6b]">
+                规则：小写字母开头，仅允许小写字母/数字/点/短横线
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-[#d0d0d0]">显示名称</Label>
+              <Input
+                value={newProjectDisplayName}
+                onChange={(e) => setNewProjectDisplayName(e.target.value)}
+                placeholder="例如：ERP 采购推演项目"
+                className="bg-[#0d0d0d] border-[#3d3d3d] text-white placeholder:text-[#6b6b6b]"
+              />
+            </div>
+            {newCanvasError && <div className="text-sm text-red-400">{newCanvasError}</div>}
+          </div>
           <DialogFooter className="mt-4">
             <Button
               variant="outline"
               onClick={() => setShowNewCanvasDialog(false)}
               className="bg-transparent border-[#3d3d3d] text-white hover:bg-[#2d2d2d]"
+              disabled={isCreatingCanvas}
             >
               取消
             </Button>
             <Button
-              variant="destructive"
-              onClick={handleNewCanvas}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              variant="default"
+              onClick={handleCreateCanvas}
+              className="bg-gradient-to-r from-[#3B82F6] to-[#2563EB] hover:opacity-90 text-white"
+              disabled={isCreatingCanvas}
             >
-              确认清空并新建
+              {isCreatingCanvas ? "创建中…" : "创建并切换"}
             </Button>
           </DialogFooter>
         </DialogContent>

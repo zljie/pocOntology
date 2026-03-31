@@ -24,6 +24,8 @@ import { useSelectionStore } from "@/stores";
 import { useUIStore } from "@/stores";
 import { generateId, isCamelCase, isPascalCase, toCamelCase, toPascalCase, cn, getBaseTypeDisplayName } from "@/lib/utils";
 import type { PropertyBaseType, Property, ObjectType } from "@/lib/types/ontology";
+import { upsertMetaToNeo4jClient } from "@/lib/neo4j/client";
+import type { MetaCore } from "@/lib/meta/meta-core";
 
 type Step = 1 | 2 | 3;
 
@@ -165,7 +167,7 @@ export function EntityTypeAIAssistantDrawer({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { objectTypes, addObjectType } = useOntologyStore();
+  const { objectTypes, addObjectType, neo4jProject, scenario } = useOntologyStore();
   const { selectObjectType } = useSelectionStore();
   const { openRightPanel } = useUIStore();
 
@@ -311,7 +313,7 @@ export function EntityTypeAIAssistantDrawer({
     });
   };
 
-  const createFromPlan = () => {
+  const createFromPlan = async () => {
     const currentPlan = plan;
     const selectedDrafts = (currentPlan?.objectTypes || []).filter((ot) => ot.enabled);
     if (!selectedDrafts.length) return;
@@ -383,6 +385,29 @@ export function EntityTypeAIAssistantDrawer({
         layer: "SEMANTIC",
       });
       created.push(newOt);
+    }
+
+    if (neo4jProject && created.length) {
+      try {
+        const meta: MetaCore = {
+          scenario,
+          objectTypes: created,
+          linkTypes: [],
+          actionTypes: [],
+          dataFlows: [],
+          businessRules: [],
+          aiModels: [],
+          analysisInsights: [],
+        };
+        await upsertMetaToNeo4jClient({
+          database: neo4jProject.dbName,
+          scenario: neo4jProject.dbName,
+          meta,
+        });
+      } catch (e: any) {
+        setError(e?.message || "写入 Neo4j 失败");
+        return;
+      }
     }
 
     if (created[0]?.id) {
@@ -626,7 +651,9 @@ export function EntityTypeAIAssistantDrawer({
                 关闭
               </Button>
               <Button
-                onClick={createFromPlan}
+                onClick={() => {
+                  void createFromPlan();
+                }}
                 className="bg-[#10B981] hover:bg-[#059669] text-white"
                 disabled={!plannedSelectedCount}
               >

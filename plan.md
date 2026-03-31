@@ -79,6 +79,52 @@
 
 ## Done（已完成）
 
+### [0028] Neo4j 存储迭代：LinkType 直接作为关系连线
+- 用户故事：作为图数据库使用者，我希望业务中的“关系类型”在图数据库中直接表现为两个对象节点之间的连线，而不是一个独立的节点，以便更符合图数据库的原生查询习惯。
+- 验收标准：
+  - [x] Neo4j 写入时不再创建独立的 LinkType 节点
+  - [x] 在源 ObjectType 和目标 ObjectType 之间创建连线（关系），属性存放在连线上
+  - [x] 重置/写入后验证 LinkType 节点计数为 0，而对象间关系数量正确
+- 关联（可选）：lib/neo4j/meta-writer.ts
+- 记录：创建日期 2026-03-31；完成日期 2026-03-31
+
+---
+
+### [0027] Neo4j 存储迭代：属性内嵌到 ObjectType（不再单独建 Property 节点）
+- 用户故事：作为建模与查询用户，我希望 ObjectType 的属性仅作为节点内部信息存储，而不是单独成为图中的节点，以便更符合“实体对外暴露、属性为内部描述”的建模语义，并支持按属性名反查拥有该属性的对象。
+- 验收标准：
+  - [x] Neo4j 写入时不再创建 Property 节点与 HAS_PROPERTY 关系
+  - [x] ObjectType 节点包含属性索引字段（例如 propertyApiNames），支持 `WHERE 'isbn' IN o.propertyApiNames` 查询
+  - [x] 重置/写入后验证 Property 节点计数为 0
+- 关联（可选）：lib/neo4j/meta-writer.ts；app/api/neo4j/upsert-meta；app/api/neo4j/seed
+- 记录：创建日期 2026-03-31；完成日期 2026-03-31
+
+---
+
+### [0026] Neo4j 项目化画布（创建数据库 + 保存按钮 + 新增实体自动写入）
+- 用户故事：作为建模用户/研发负责人，我希望新建画布时创建一个对应的 Neo4j 数据库，并在后续新增实体类时自动写入节点，同时提供手动“保存到 Neo4j”按钮，以便实现可持续的数据流推演落库。
+- 验收标准：
+  - [x] 新建画布时可输入项目名称（dbName）与显示名称，dbName 校验符合 Neo4j 规则
+  - [x] 创建画布时在 Neo4j 的 system 库执行创建数据库，并在 UI 记录当前项目（dbName + displayName）
+  - [x] 提供“保存到 Neo4j”按钮：将当前 MetaCore 写入当前项目数据库
+  - [x] 新增 ObjectType 时自动写入当前项目数据库（至少覆盖：手动创建、AI 批量创建、画布添加节点、JSON 导入）
+- 关联（可选）：components/layout/header.tsx；app/api/neo4j/create-database；app/api/neo4j/upsert-meta；stores/ontology-store.ts
+- 记录：创建日期 2026-03-31；完成日期 2026-03-31
+
+---
+
+### [0025] Neo4j 持久化接入（本体/画布数据落库）
+- 用户故事：作为方案架构师/研发负责人，我希望把当前画布（本体）数据持久化到 Neo4j，以便获得可查询、可扩展的数据存储方案并支持后续联动分析。
+- 验收标准：
+  - [x] 通过环境变量配置 Neo4j 连接信息（不在仓库内明文保存密码）
+  - [x] 提供服务端写入接口：可将 MetaCore 数据写入 Neo4j（包含 ObjectType/LinkType/ActionType/DataFlow/BusinessRule/AIModel/AnalysisInsight）
+  - [x] 可将至少一个内置案例数据（图书馆或 ERP）成功写入 Neo4j
+  - [x] 写入后可做基础验证（例如：返回写入计数/节点与关系数量）
+- 关联（可选）：app/api；lib/neo4j；lib/types；stores/ontology-store.ts
+- 记录：创建日期 2026-03-31；完成日期 2026-03-31
+
+---
+
 ### [0024] 语义层「关系类型」AI 助手（关系预测与自动生成）
 - 用户故事：作为业务建模用户，我希望在语义层的“关系类型”模块中使用 AI 自动测算可能存在的关系，并在我确认/补充后一次性生成关系类型，以便更快完成本体建模。
 - 验收标准：
