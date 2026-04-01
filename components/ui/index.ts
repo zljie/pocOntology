@@ -39,6 +39,7 @@ export { Switch } from "./switch";
 export { Separator } from "./separator";
 export { Textarea } from "./textarea";
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./tooltip";
+export { RadioGroup, RadioGroupItem } from "./radio-group";
 export {
   DropdownMenu,
   DropdownMenuTrigger,

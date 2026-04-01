@@ -1,4 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  ERP_ACTION_TYPES,
+  ERP_AI_MODELS,
+  ERP_ANALYSIS_INSIGHTS,
+  ERP_BUSINESS_RULES,
+  ERP_DATA_FLOWS,
+  ERP_LINK_TYPES,
+  ERP_OBJECT_TYPES,
+} from "@/lib/types/ontology-erp-sample";
+import { buildErpOrmMapping } from "@/lib/orm/erp";
+import { buildErpSqlPreview } from "@/lib/semantic/sql";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -98,6 +109,9 @@ const CASE_EXAMPLES = [
 
 function buildMessagesUrl(baseUrl: string) {
   const normalized = baseUrl.replace(/\/+$/, "");
+  if (normalized.endsWith("/messages")) {
+    return normalized;
+  }
   if (normalized.endsWith("/v1")) {
     return `${normalized}/messages`;
   }
@@ -225,15 +239,50 @@ function fallbackSwrl() {
 
 function fallbackParsedResult(query: string) {
   const barcode = query.match(/(?:条码号?|barcode)\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] || "ABC123";
+  const isErp =
+    query.includes("采购") ||
+    query.includes("PR") ||
+    query.includes("PO") ||
+    query.includes("收货") ||
+    query.includes("入库") ||
+    query.includes("供应商") ||
+    query.includes("物料");
+  const isCreatePr = query.includes("采购申请") || query.includes("创建采购申请") || (isErp && query.includes("申请"));
+  const isCreatePo = query.includes("采购订单") || query.includes("创建采购订单") || query.includes("提交订单") || (isErp && query.includes("订购"));
+  const isReceive = query.includes("收货") || query.includes("入库");
   const isReturn = query.includes("还");
   const isRenew = query.includes("续借");
-  const action = isReturn
+  const action =
+    isErp && isCreatePr
+      ? { id: "action-create-pr", name: "CreatePR", displayName: "创建采购申请", layer: "KINETIC" }
+      : isErp && isReceive
+      ? { id: "action-receive-goods", name: "ReceiveGoods", displayName: "收货过账", layer: "KINETIC" }
+      : isErp && isCreatePo
+      ? { id: "action-create-po", name: "CreatePO", displayName: "创建采购订单", layer: "KINETIC" }
+      : isReturn
     ? { id: "action-return", name: "ReturnBook", displayName: "还书", layer: "KINETIC" }
     : isRenew
     ? { id: "action-renew", name: "RenewLoan", displayName: "续借", layer: "KINETIC" }
     : { id: "action-checkout", name: "CheckoutBook", displayName: "借书", layer: "KINETIC" };
 
-  const entities = isReturn
+  const entities =
+    isErp && action.id === "action-create-pr"
+      ? [
+          { type: "OBJECT_TYPE", id: "purchase-requisition", name: "PurchaseRequisition", displayName: "采购申请", confidence: 0.9, matchedText: "采购申请" },
+          { type: "OBJECT_TYPE", id: "material-erp", name: "Material", displayName: "物料", confidence: 0.82, matchedText: "物料" }
+        ]
+      : isErp && action.id === "action-create-po"
+      ? [
+          { type: "OBJECT_TYPE", id: "purchase-order", name: "PurchaseOrder", displayName: "采购订单", confidence: 0.9, matchedText: "订单" },
+          { type: "OBJECT_TYPE", id: "purchase-requisition", name: "PurchaseRequisition", displayName: "采购申请", confidence: 0.78, matchedText: "PR" },
+          { type: "OBJECT_TYPE", id: "supplier-erp", name: "Supplier", displayName: "供应商", confidence: 0.8, matchedText: "供应商" }
+        ]
+      : isErp && action.id === "action-receive-goods"
+      ? [
+          { type: "OBJECT_TYPE", id: "goods-receipt", name: "GoodsReceipt", displayName: "收货单", confidence: 0.9, matchedText: "收货" },
+          { type: "OBJECT_TYPE", id: "purchase-order", name: "PurchaseOrder", displayName: "采购订单", confidence: 0.82, matchedText: "PO" }
+        ]
+      : isReturn
     ? [
         { type: "OBJECT_TYPE", id: "holding-001", name: "Holding", displayName: "馆藏副本", confidence: 0.92, matchedText: "条码号" },
         { type: "OBJECT_TYPE", id: "loan-001", name: "Loan", displayName: "借阅记录", confidence: 0.88, matchedText: "还书" }
@@ -243,7 +292,40 @@ function fallbackParsedResult(query: string) {
         { type: "OBJECT_TYPE", id: "patron-001", name: "Patron", displayName: "读者", confidence: 0.78, matchedText: "用户" }
       ];
 
-  const suggestedProperties = isReturn
+  const prNumber =
+    query.match(/\bPR\s*([A-Za-z0-9_-]+)\b/i)?.[0]?.replace(/\s+/g, "") ||
+    query.match(/PR编号\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] ||
+    "PR20260001";
+  const supplierId =
+    query.match(/\bSUP\s*([A-Za-z0-9_-]+)\b/i)?.[0]?.replace(/\s+/g, "") ||
+    query.match(/供应商编码\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] ||
+    "SUP-0001";
+  const poNumber =
+    query.match(/\bPO\s*([A-Za-z0-9_-]+)\b/i)?.[0]?.replace(/\s+/g, "") ||
+    query.match(/PO编号\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] ||
+    "PO20260001";
+  const materialCode =
+    query.match(/物料编码\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] ||
+    "MAT-0001";
+  const quantity = query.match(/(\d+(?:\.\d+)?)\s*(?:个|件|箱|吨|kg|KG|千克)?/)?.[1] || "10";
+
+  const suggestedProperties =
+    isErp && action.id === "action-create-po"
+      ? [
+          { propertyId: "prNumber", propertyName: "prNumber", displayName: "PR编号", value: prNumber, inferred: false, source: "STRING", objectTypeId: "purchase-requisition" },
+          { propertyId: "supplierId", propertyName: "supplierId", displayName: "供应商编码", value: supplierId, inferred: false, source: "STRING", objectTypeId: "supplier-erp" }
+        ]
+      : isErp && action.id === "action-create-pr"
+      ? [
+          { propertyId: "materialCode", propertyName: "materialCode", displayName: "物料编码", value: materialCode, inferred: false, source: "STRING", objectTypeId: "material-erp" },
+          { propertyId: "quantity", propertyName: "quantity", displayName: "需求数量", value: quantity, inferred: true, source: "DOUBLE", objectTypeId: "purchase-requisition" }
+        ]
+      : isErp && action.id === "action-receive-goods"
+      ? [
+          { propertyId: "poNumber", propertyName: "poNumber", displayName: "PO编号", value: poNumber, inferred: false, source: "STRING", objectTypeId: "purchase-order" },
+          { propertyId: "receivedQuantity", propertyName: "receivedQuantity", displayName: "收货数量", value: quantity, inferred: true, source: "DOUBLE", objectTypeId: "goods-receipt" }
+        ]
+      : isReturn
     ? [
         { propertyId: "barcode", propertyName: "barcode", displayName: "条码号", value: barcode, inferred: false, source: "STRING", objectTypeId: "holding-001" },
         { propertyId: "loanStatus", propertyName: "loanStatus", displayName: "借阅状态", value: "RETURNED", inferred: true, source: "STRING", objectTypeId: "loan-001" }
@@ -296,6 +378,25 @@ function fallbackTemplateVars(query: string, parsedResult: any): Record<string, 
   const barcode = query.match(/(?:条码号?|barcode)\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] || "ABC123";
   const bookTitle = query.match(/《([^》]+)》/)?.[1] || "目标图书";
   const patronName = query.match(/(?:读者|用户|会员)\s*([^\s，,。]+)/)?.[1] || "张三";
+  const prNumber =
+    query.match(/\bPR\s*([A-Za-z0-9_-]+)\b/i)?.[0]?.replace(/\s+/g, "") ||
+    query.match(/PR编号\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] ||
+    "PR20260001";
+  const supplierId =
+    query.match(/\bSUP\s*([A-Za-z0-9_-]+)\b/i)?.[0]?.replace(/\s+/g, "") ||
+    query.match(/供应商编码\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] ||
+    "SUP-0001";
+  const poNumber =
+    query.match(/\bPO\s*([A-Za-z0-9_-]+)\b/i)?.[0]?.replace(/\s+/g, "") ||
+    query.match(/PO编号\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] ||
+    "PO20260001";
+  const deliveryNote =
+    query.match(/送货单号\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] ||
+    "DN-0001";
+  const materialCode =
+    query.match(/物料编码\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] ||
+    "MAT-0001";
+  const quantity = query.match(/(\d+(?:\.\d+)?)\s*(?:个|件|箱|吨|kg|KG|千克)?/)?.[1] || "10";
   if (actionId === "action-return") {
     return { barcode };
   }
@@ -305,11 +406,42 @@ function fallbackTemplateVars(query: string, parsedResult: any): Record<string, 
   if (actionId === "action-query-overdue-fine") {
     return { loanStatus: "OVERDUE" };
   }
+  if (actionId === "action-create-po") {
+    return { prNumber, supplierId };
+  }
+  if (actionId === "action-create-pr") {
+    return { materialCode, quantity, requiredDate: new Date().toISOString() };
+  }
+  if (actionId === "action-receive-goods") {
+    return { poNumber, deliveryNote, receivedQuantity: quantity };
+  }
   return { bookTitle, patronName };
 }
 
 function fallbackGraphqlTemplate(parsedResult: any) {
   const actionId = parsedResult?.action?.id || "";
+  if (actionId === "action-create-pr") {
+    return `mutation CreatePurchaseRequisition($materialCode: String!, $quantity: Float!, $requiredDate: String!) {
+  createPurchaseRequisition(input: { materialCode: $materialCode, quantity: $quantity, requiredDate: $requiredDate }) {
+    prNumber
+  }
+}`;
+  }
+  if (actionId === "action-create-po") {
+    return `mutation CreatePurchaseOrder($prNumber: String!, $supplierId: String!) {
+  createPurchaseOrder(input: { prNumber: $prNumber, supplierId: $supplierId }) {
+    poNumber
+    status
+  }
+}`;
+  }
+  if (actionId === "action-receive-goods") {
+    return `mutation PostGoodsReceipt($poNumber: String!, $deliveryNote: String!, $receivedQuantity: Float!) {
+  postGoodsReceipt(input: { poNumber: $poNumber, deliveryNote: $deliveryNote, receivedQuantity: $receivedQuantity }) {
+    grNumber
+  }
+}`;
+  }
   if (actionId === "action-return") {
     return `mutation ReturnBook($barcode: String!) {
   returnBook(input: { barcode: $barcode }) {
@@ -459,13 +591,6 @@ JSON schema:
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.MINIMAX_API_KEY || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "缺少 MINIMAX_API_KEY（或 ANTHROPIC_API_KEY）环境变量" },
-      { status: 500 }
-    );
-  }
-
   const body = await req.json().catch(() => null);
   const query = body?.query?.toString?.().trim?.();
 
@@ -473,50 +598,54 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "query 不能为空" }, { status: 400 });
   }
 
-  const prompt = buildSemanticAgentPrompt(query);
+  let reasoning = "";
+  let parsed: any = null;
+  let rdfFromText = "";
+  let swrlFromText = "";
 
-  const payload = {
-    model: MODEL,
-    max_tokens: 10000,
-    temperature: 0.3,
-    system: "你是本体建模与语义查询专家，擅长把自然语言转换为语义网络与规则表达。",
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: `${prompt}\n\n用户输入：${query}` }
-        ]
-      }
-    ]
-  };
+  if (apiKey) {
+    const prompt = buildSemanticAgentPrompt(query);
 
-  const response = await fetch(buildMessagesUrl(BASE_URL), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "Authorization": `Bearer ${apiKey}`,
-      "anthropic-version": "2023-06-01"
-    },
-    body: JSON.stringify(payload),
-    cache: "no-store"
-  });
+    const payload = {
+      model: MODEL,
+      max_tokens: 10000,
+      temperature: 0.3,
+      system: "你是本体建模与语义查询专家，擅长把自然语言转换为语义网络与规则表达。",
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: `${prompt}\n\n用户输入：${query}` }],
+        },
+      ],
+    };
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error("LLM Request Failed in /api/semantic-query:", response.status, errorText);
-    return NextResponse.json(
-      { error: "MiniMax 调用失败", detail: errorText.slice(0, 800) },
-      { status: 502 }
-    );
+    const response = await fetch(buildMessagesUrl(BASE_URL), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "Authorization": `Bearer ${apiKey}`,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("LLM Request Failed in /api/semantic-query:", response.status, errorText);
+      return NextResponse.json({ error: "MiniMax 调用失败", detail: errorText.slice(0, 800) }, { status: 502 });
+    }
+
+    const result = await response.json();
+    const text = extractTextBlocks(result?.content || []);
+    reasoning = extractThinkingBlocks(result?.content || []);
+    parsed = safeParseJSON(text);
+    rdfFromText = extractCodeFence(text, "turtle") || extractCodeFence(text, "ttl") || "";
+    swrlFromText = extractCodeFence(text, "swrl") || "";
+  } else {
+    reasoning = "未配置 LLM Key，已使用本地规则回退生成预览。";
   }
-
-  const result = await response.json();
-  const text = extractTextBlocks(result?.content || []);
-  const reasoning = extractThinkingBlocks(result?.content || []);
-  const parsed = safeParseJSON(text);
-  const rdfFromText = extractCodeFence(text, "turtle") || extractCodeFence(text, "ttl");
-  const swrlFromText = extractCodeFence(text, "swrl");
 
   const semanticScenario = (parsed?.semanticScenario || "").trim() || fallbackSemanticScenario(query);
   const rdf = (parsed?.rdf || "").trim() || rdfFromText || fallbackRdf(query);
@@ -536,6 +665,37 @@ export async function POST(req: NextRequest) {
         )
       : fallbackTemplateVars(query, parsedResult);
 
+  const isErpAction =
+    parsedResult?.action?.id === "action-create-pr" ||
+    parsedResult?.action?.id === "action-create-po" ||
+    parsedResult?.action?.id === "action-receive-goods";
+  const erpSql = isErpAction
+    ? buildErpSqlPreview({
+        meta: {
+          scenario: "erp",
+          objectTypes: ERP_OBJECT_TYPES,
+          linkTypes: ERP_LINK_TYPES,
+          actionTypes: ERP_ACTION_TYPES,
+          dataFlows: ERP_DATA_FLOWS,
+          businessRules: ERP_BUSINESS_RULES,
+          aiModels: ERP_AI_MODELS,
+          analysisInsights: ERP_ANALYSIS_INSIGHTS,
+        },
+        mapping: buildErpOrmMapping({
+          scenario: "erp",
+          objectTypes: ERP_OBJECT_TYPES,
+          linkTypes: ERP_LINK_TYPES,
+          actionTypes: ERP_ACTION_TYPES,
+          dataFlows: ERP_DATA_FLOWS,
+          businessRules: ERP_BUSINESS_RULES,
+          aiModels: ERP_AI_MODELS,
+          analysisInsights: ERP_ANALYSIS_INSIGHTS,
+        }),
+        actionTypeId: parsedResult.action.id,
+        templateVars,
+      })
+    : null;
+
   return NextResponse.json({
     semanticScenario,
     rdf,
@@ -544,6 +704,8 @@ export async function POST(req: NextRequest) {
     dsl,
     graphqlTemplate,
     templateVars,
+    sql: erpSql?.sql,
+    sqlVars: erpSql?.vars,
     reasoning,
     parsedResult
   });

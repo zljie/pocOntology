@@ -34,7 +34,8 @@ export interface OrmLinkMapping {
 
 export interface OrmMapping {
   dialect: OrmDialect;
+  databaseName?: string;
+  schemaName?: string;
   tables: Record<string, OrmTableMapping>;
   links: Record<string, OrmLinkMapping>;
 }
-

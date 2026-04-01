@@ -9,6 +9,9 @@ const MODEL = process.env.MINIMAX_MODEL || "MiniMax-M2.7";
 
 function buildMessagesUrl(baseUrl: string) {
   const normalized = baseUrl.replace(/\/+$/, "");
+  if (normalized.endsWith("/messages")) {
+    return normalized;
+  }
   if (normalized.endsWith("/v1")) {
     return `${normalized}/messages`;
   }
@@ -260,4 +263,3 @@ export async function POST(req: NextRequest) {
     },
   });
 }
-

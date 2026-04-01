@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useOntologyStore, useSelectionStore, useUIStore } from "@/stores";
+import { ActionTypeEditor } from "./action-type-editor";
 
 export function KineticEditorPanel() {
   const { actionTypes, dataFlows, updateActionType, updateDataFlow } = useOntologyStore();
@@ -28,54 +29,7 @@ export function KineticEditorPanel() {
   };
 
   if (selectedActionType) {
-    return (
-      <div className="flex flex-col h-full bg-[#161614]">
-        <div className="flex items-center justify-between p-4 border-b border-[#2d2d2d]">
-          <div>
-            <h2 className="text-sm font-semibold text-white">{selectedActionType.displayName}</h2>
-            <span className="text-xs text-[#6b6b6b] font-mono">{selectedActionType.apiName}</span>
-          </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8 text-[#6b6b6b] hover:text-white" onClick={handleClose}>
-            <X className="w-4 h-4" />
-          </Button>
-        </div>
-        <ScrollArea className="flex-1 p-4">
-          <div className="space-y-6">
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium text-white flex items-center gap-2">
-                <Settings className="w-4 h-4 text-[#10B981]" /> 基本配置
-              </h3>
-              <div className="space-y-2">
-                <Label className="text-xs text-[#6b6b6b]">显示名称</Label>
-                <Input 
-                  value={selectedActionType.displayName} 
-                  onChange={(e) => updateActionType(selectedActionType.id, { displayName: e.target.value })} 
-                  className="bg-[#0d0d0d] border-[#2d2d2d]" 
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs text-[#6b6b6b]">API 名称</Label>
-                <Input 
-                  value={selectedActionType.apiName} 
-                  onChange={(e) => updateActionType(selectedActionType.id, { apiName: e.target.value })} 
-                  className="bg-[#0d0d0d] border-[#2d2d2d] font-mono text-xs" 
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs text-[#6b6b6b]">描述</Label>
-                <Textarea 
-                  value={selectedActionType.description || ""} 
-                  onChange={(e) => updateActionType(selectedActionType.id, { description: e.target.value })} 
-                  className="bg-[#0d0d0d] border-[#2d2d2d] min-h-[80px]" 
-                />
-              </div>
-            </div>
-            
-            {/* Note: In a full version, we'd add complex UI for inputParameters, outputProperties, and triggerConditions here */}
-          </div>
-        </ScrollArea>
-      </div>
-    );
+    return <ActionTypeEditor />;
   }
 
   if (selectedDataFlow) {

@@ -82,6 +82,9 @@ export function SemanticQueryPreviewPanel({ className }: { className?: string })
                 <TabsTrigger value="graphql" className="text-xs data-[state=active]:bg-[#2d2d2d]">
                   GraphQL
                 </TabsTrigger>
+                <TabsTrigger value="sql" className="text-xs data-[state=active]:bg-[#2d2d2d]">
+                  SQL
+                </TabsTrigger>
               </TabsList>
             </div>
 
@@ -153,6 +156,19 @@ export function SemanticQueryPreviewPanel({ className }: { className?: string })
                 {executionError && (
                   <pre className="px-3 pb-3 text-[10px] leading-5 text-[#f87171] whitespace-pre-wrap break-words">
                     {`error:\n${executionError}`}
+                  </pre>
+                )}
+              </ScrollArea>
+            </TabsContent>
+
+            <TabsContent value="sql" className="mt-2 px-3 pb-3 flex-1 min-h-0">
+              <ScrollArea className="h-full rounded-md border border-[#2d2d2d] bg-[#0d0d0d]">
+                <pre className="p-3 text-[11px] leading-5 text-[#93F2B2] whitespace-pre-wrap break-words">
+                  {semanticQueryPreview.sql || "未生成 SQL 计划"}
+                </pre>
+                {semanticQueryPreview.sqlVars && Object.keys(semanticQueryPreview.sqlVars).length > 0 && (
+                  <pre className="px-3 pb-3 text-[10px] leading-5 text-[#9ca3af] whitespace-pre-wrap break-words">
+                    {`params:\n${JSON.stringify(semanticQueryPreview.sqlVars, null, 2)}`}
                   </pre>
                 )}
               </ScrollArea>

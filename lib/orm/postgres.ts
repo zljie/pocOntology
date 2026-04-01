@@ -255,6 +255,8 @@ export function generateDataDictionaryMarkdown(meta: MetaCore, mapping?: OrmMapp
   lines.push(`# 数据字典（PostgreSQL）`);
   lines.push(``);
   lines.push(`- dialect: postgres`);
+  if (effectiveMapping.databaseName) lines.push(`- database: ${effectiveMapping.databaseName}`);
+  if (effectiveMapping.schemaName) lines.push(`- schema: ${effectiveMapping.schemaName}`);
   lines.push(`- scenario: ${meta.scenario || "custom"}`);
   lines.push(`- exportedAt: ${new Date().toISOString()}`);
   lines.push(``);

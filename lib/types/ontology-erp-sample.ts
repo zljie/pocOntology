@@ -65,6 +65,9 @@ export const ERP_OBJECT_TYPES: ObjectType[] = [
       { id: 'requester', apiName: 'requester', displayName: '申请人', baseType: 'STRING', visibility: 'NORMAL', required: true },
       { id: 'department', apiName: 'department', displayName: '需求部门', baseType: 'STRING', visibility: 'NORMAL', required: true },
       { id: 'status', apiName: 'status', displayName: '审批状态', baseType: 'STRING', visibility: 'PROMINENT', required: true, description: 'DRAFT/PENDING/APPROVED/REJECTED' },
+      { id: 'materialCode', apiName: 'materialCode', displayName: '物料编码', baseType: 'STRING', visibility: 'PROMINENT', required: true },
+      { id: 'quantity', apiName: 'quantity', displayName: '需求数量', baseType: 'DOUBLE', visibility: 'PROMINENT', required: true },
+      { id: 'requiredDate', apiName: 'requiredDate', displayName: '需求日期', baseType: 'TIMESTAMP', visibility: 'PROMINENT', required: true },
     ],
   },
   {
@@ -86,6 +89,8 @@ export const ERP_OBJECT_TYPES: ObjectType[] = [
       { id: 'totalAmount', apiName: 'totalAmount', displayName: '总金额', baseType: 'DOUBLE', visibility: 'PROMINENT', required: true },
       { id: 'currency', apiName: 'currency', displayName: '币种', baseType: 'STRING', visibility: 'NORMAL', required: true },
       { id: 'status', apiName: 'status', displayName: '订单状态', baseType: 'STRING', visibility: 'PROMINENT', required: true, description: 'CREATED/RELEASED/PARTIAL_RECEIPT/COMPLETED/CLOSED' },
+      { id: 'supplierId', apiName: 'supplierId', displayName: '供应商编码', baseType: 'STRING', visibility: 'PROMINENT', required: true },
+      { id: 'prNumber', apiName: 'prNumber', displayName: '来源PR编号', baseType: 'STRING', visibility: 'NORMAL', required: true },
     ],
   },
   {
@@ -106,6 +111,8 @@ export const ERP_OBJECT_TYPES: ObjectType[] = [
       { id: 'postingDate', apiName: 'postingDate', displayName: '过账日期', baseType: 'TIMESTAMP', visibility: 'PROMINENT', required: true },
       { id: 'receivedQuantity', apiName: 'receivedQuantity', displayName: '收货数量', baseType: 'DOUBLE', visibility: 'NORMAL', required: true },
       { id: 'qualityStatus', apiName: 'qualityStatus', displayName: '质检状态', baseType: 'STRING', visibility: 'NORMAL', required: true, description: 'UNRESTRICTED/IN_INSPECTION/BLOCKED' },
+      { id: 'poNumber', apiName: 'poNumber', displayName: 'PO编号', baseType: 'STRING', visibility: 'PROMINENT', required: true },
+      { id: 'deliveryNote', apiName: 'deliveryNote', displayName: '送货单号', baseType: 'STRING', visibility: 'NORMAL', required: true },
     ],
   },
   {
@@ -127,6 +134,7 @@ export const ERP_OBJECT_TYPES: ObjectType[] = [
       { id: 'invoiceAmount', apiName: 'invoiceAmount', displayName: '发票金额', baseType: 'DOUBLE', visibility: 'PROMINENT', required: true },
       { id: 'taxAmount', apiName: 'taxAmount', displayName: '税额', baseType: 'DOUBLE', visibility: 'NORMAL', required: true },
       { id: 'status', apiName: 'status', displayName: '校验状态', baseType: 'STRING', visibility: 'PROMINENT', required: true, description: 'ENTERED/VERIFIED/BLOCKED/PAID' },
+      { id: 'poNumber', apiName: 'poNumber', displayName: 'PO编号', baseType: 'STRING', visibility: 'NORMAL', required: true },
     ],
   },
 ];
@@ -134,7 +142,7 @@ export const ERP_OBJECT_TYPES: ObjectType[] = [
 export const ERP_LINK_TYPES: LinkType[] = [
   { id: 'link-pr-material', apiName: 'PRMaterial', displayName: '申请物料', description: '采购申请中包含的物料', sourceTypeId: 'purchase-requisition', targetTypeId: 'material-erp', cardinality: 'MANY_TO_ONE', foreignKeyPropertyId: 'materialCode', visibility: 'GLOBAL', layer: 'SEMANTIC', relationshipType: 'ASSOCIATION', createdAt: '2024-01-01T08:00:00Z', updatedAt: '2024-01-01T08:00:00Z', properties: [] },
   { id: 'link-po-supplier', apiName: 'POSupplier', displayName: '订单供应商', description: '采购订单关联的供应商', sourceTypeId: 'purchase-order', targetTypeId: 'supplier-erp', cardinality: 'MANY_TO_ONE', foreignKeyPropertyId: 'supplierId', visibility: 'GLOBAL', layer: 'SEMANTIC', relationshipType: 'ASSOCIATION', createdAt: '2024-01-01T08:00:00Z', updatedAt: '2024-01-01T08:00:00Z', properties: [] },
-  { id: 'link-po-pr', apiName: 'POtoPR', displayName: '订单寻源', description: '采购订单来源的采购申请', sourceTypeId: 'purchase-order', targetTypeId: 'purchase-requisition', cardinality: 'ONE_TO_MANY', foreignKeyPropertyId: 'poNumber', visibility: 'GLOBAL', layer: 'SEMANTIC', relationshipType: 'ASSOCIATION', createdAt: '2024-01-01T08:00:00Z', updatedAt: '2024-01-01T08:00:00Z', properties: [] },
+  { id: 'link-po-pr', apiName: 'POtoPR', displayName: '订单寻源', description: '采购订单来源的采购申请', sourceTypeId: 'purchase-order', targetTypeId: 'purchase-requisition', cardinality: 'MANY_TO_ONE', foreignKeyPropertyId: 'prNumber', visibility: 'GLOBAL', layer: 'SEMANTIC', relationshipType: 'ASSOCIATION', createdAt: '2024-01-01T08:00:00Z', updatedAt: '2024-01-01T08:00:00Z', properties: [] },
   { id: 'link-gr-po', apiName: 'GRtoPO', displayName: '收货关联订单', description: '收货单对应的采购订单', sourceTypeId: 'goods-receipt', targetTypeId: 'purchase-order', cardinality: 'MANY_TO_ONE', foreignKeyPropertyId: 'poNumber', visibility: 'GLOBAL', layer: 'SEMANTIC', relationshipType: 'ASSOCIATION', createdAt: '2024-01-01T08:00:00Z', updatedAt: '2024-01-01T08:00:00Z', properties: [] },
   { id: 'link-inv-po', apiName: 'InvoiceToPO', displayName: '发票关联订单', description: '发票对应的采购订单', sourceTypeId: 'invoice', targetTypeId: 'purchase-order', cardinality: 'MANY_TO_ONE', foreignKeyPropertyId: 'poNumber', visibility: 'GLOBAL', layer: 'SEMANTIC', relationshipType: 'ASSOCIATION', createdAt: '2024-01-01T08:00:00Z', updatedAt: '2024-01-01T08:00:00Z', properties: [] },
 ];
@@ -158,6 +166,16 @@ export const ERP_ACTION_TYPES: ActionType[] = [
     outputProperties: [
       { id: 'prNumber', apiName: 'prNumber', displayName: 'PR编号', baseType: 'STRING', visibility: 'PROMINENT', required: true },
     ],
+    interfaceMapping: {
+      kind: "GRAPHQL",
+      operationType: "mutation",
+      operationName: "CreatePurchaseRequisition",
+      rootField: "createPurchaseRequisition",
+      inputArgName: "input",
+      inputFields: ["materialCode", "quantity", "requiredDate"],
+      inputVarTypes: { materialCode: "String!", quantity: "Float!", requiredDate: "String!" },
+      outputFields: ["prNumber"],
+    },
     requiredRoles: ['REQUESTER', 'DEPARTMENT_MANAGER'],
     icon: 'FilePlus',
     color: '#3B82F6',
@@ -181,6 +199,16 @@ export const ERP_ACTION_TYPES: ActionType[] = [
       { id: 'poNumber', apiName: 'poNumber', displayName: 'PO编号', baseType: 'STRING', visibility: 'PROMINENT', required: true },
       { id: 'status', apiName: 'status', displayName: '订单状态', baseType: 'STRING', visibility: 'PROMINENT', required: true },
     ],
+    interfaceMapping: {
+      kind: "GRAPHQL",
+      operationType: "mutation",
+      operationName: "CreatePurchaseOrder",
+      rootField: "createPurchaseOrder",
+      inputArgName: "input",
+      inputFields: ["prNumber", "supplierId"],
+      inputVarTypes: { prNumber: "String!", supplierId: "String!" },
+      outputFields: ["poNumber", "status"],
+    },
     triggerConditions: [
       { condition: 'pr.status == APPROVED', description: 'PR 必须已审批通过' },
     ],
@@ -202,11 +230,21 @@ export const ERP_ACTION_TYPES: ActionType[] = [
     inputParameters: [
       { id: 'poNumber', apiName: 'poNumber', displayName: 'PO编号', baseType: 'STRING', visibility: 'PROMINENT', required: true },
       { id: 'deliveryNote', apiName: 'deliveryNote', displayName: '送货单号', baseType: 'STRING', visibility: 'NORMAL', required: true },
-      { id: 'receivedQty', apiName: 'receivedQty', displayName: '实收数量', baseType: 'DOUBLE', visibility: 'PROMINENT', required: true },
+      { id: 'receivedQuantity', apiName: 'receivedQuantity', displayName: '实收数量', baseType: 'DOUBLE', visibility: 'PROMINENT', required: true },
     ],
     outputProperties: [
       { id: 'grNumber', apiName: 'grNumber', displayName: 'GR编号', baseType: 'STRING', visibility: 'PROMINENT', required: true },
     ],
+    interfaceMapping: {
+      kind: "GRAPHQL",
+      operationType: "mutation",
+      operationName: "PostGoodsReceipt",
+      rootField: "postGoodsReceipt",
+      inputArgName: "input",
+      inputFields: ["poNumber", "deliveryNote", "receivedQuantity"],
+      inputVarTypes: { poNumber: "String!", deliveryNote: "String!", receivedQuantity: "Float!" },
+      outputFields: ["grNumber"],
+    },
     triggerConditions: [
       { condition: 'po.status == RELEASED || po.status == PARTIAL_RECEIPT', description: 'PO 必须是已下达且未完全收货状态' },
     ],

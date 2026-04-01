@@ -68,16 +68,74 @@
 ### [0004] 重写本体图谱展示（Reagraph）
 - 用户故事：作为用户，我希望在主画布以 Reagraph 方式展示本体图谱，以便更稳定地进行缩放拖拽、布局与节点联动查看。
 - 验收标准：
-  - [ ] 画布支持“图谱模式”展示（力导向布局，可缩放、拖拽）
-  - [ ] 渲染不出现 SSR/水合阶段的 `window is not defined` 等异常
-  - [ ] 节点至少展示对象与关系（ObjectType/LinkType），并能渲染边
-  - [ ] 点击节点可联动右侧面板展示对应详情
+  - [x] 画布支持“图谱模式”展示（力导向布局，可缩放、拖拽）
+  - [x] 渲染不出现 SSR/水合阶段的 `window is not defined` 等异常
+  - [x] 节点至少展示对象与关系（ObjectType/LinkType），并能渲染边
+  - [x] 点击节点可联动右侧面板展示对应详情
 - 关联（可选）：components/graph-canvas/ontology-canvas.tsx；components/graph-canvas/ontology-knowledge-graph.tsx；package.json
-- 记录：创建日期 2026-03-25
+- 记录：创建日期 2026-03-25；完成日期 2026-03-25
 
 ---
 
 ## Done（已完成）
+
+### [0033] 图谱交互修复：点击节点不触发布局散开
+- 用户故事：作为建模用户，我希望点击节点时只更新选中/高亮而不重置力导向布局，以便稳定浏览图谱与连续点选。
+- 验收标准：
+  - [x] 点击节点/连线不会清空 SVG 或重建仿真导致整体重新布局
+  - [x] 选中/高亮样式可更新且不影响节点位置
+  - [x] 连续点选多个节点布局稳定，拖拽/缩放不受影响
+- 关联（可选）：components/graph-canvas/ontology-knowledge-graph.tsx
+- 记录：创建日期 2026-04-01；完成日期 2026-04-01
+
+---
+
+### [0032] ERP对象类型：数据库/表/字段绑定映射（模拟数据）
+- 用户故事：作为数据架构师/实施顾问，我希望 ERP 采购案例中的每个对象类型都能绑定到一个明确的数据库实例与表字段映射，以便导出数据模型资产并让语义查询可推演出可执行的 SQL 草案。
+- 验收标准：
+  - [x] OrmMapping 支持 databaseName/schemaName，并能在导出数据字典中体现
+  - [x] ERP 对象类型具备完整字段映射（table + columns），包含主键、外键列（如 PO.supplierId、PO.prNumber、GR.poNumber、INV.poNumber）
+  - [x] ERP 映射可被 store 加载并用于 DDL/SQL 预览生成
+- 关联（可选）：lib/orm/orm-mapping.ts；lib/orm/erp.ts；lib/types/ontology-erp-sample.ts；stores/ontology-store.ts
+- 记录：创建日期 2026-04-01；完成日期 2026-04-01
+
+---
+
+### [0031] ERP采购：对象/动作映射到数据库与接口（含 SQL 预览）
+- 用户故事：作为方案架构师/数据架构师，我希望为 ERP 采购示例的每个对象类型与动作补齐“数据库映射 + 接口映射”，以便语义查询可以稳定推演出 GraphQL 调用与 SQL 计划草案。
+- 验收标准：
+  - [x] ERP ObjectType 均具备可生成 DDL 的表/字段映射（含主键、必填、类型）
+  - [x] ERP LinkType 可生成一致的外键/约束策略（含基数修正与外键列落点）
+  - [x] ERP ActionType 均具备接口映射（至少 GraphQL 模板 + 变量规则）
+  - [x] 语义查询预览新增 SQL 页签，展示由动作推导的 SQL 计划（查询/写入）
+  - [x] 对输入“提交订单/创建采购申请/收货”本地规则解析能输出稳定的 GraphQL + SQL 预览
+- 关联（可选）：lib/types/ontology-erp-sample.ts；lib/orm；components/semantic-query；app/api/semantic-query
+- 记录：创建日期 2026-04-01；完成日期 2026-04-01
+
+---
+
+### [0030] 使用 D3.js 重构图形画布
+- 用户故事：作为业务建模用户，我希望用 D3.js 重构我们的图形画布，以便提供更丰富、更灵活的节点和连线展示能力。
+- 验收标准：
+  - [x] 移除旧的图形库（Reagraph 等），引入 D3.js。
+  - [x] 使用 D3.js 重新实现本体图谱（力导向图等），支持缩放、拖拽。
+  - [x] 节点（ObjectType）与连线（LinkType）能够正确渲染，展示名称。
+  - [x] 保持原有的点击节点联动右侧属性面板的交互逻辑。
+- 关联（可选）：components/graph-canvas/ontology-canvas.tsx
+- 记录：创建日期 2026-03-31；完成日期 2026-03-31
+
+---
+
+### [0029] 完善操作类型（Action Type）的新增与表单设计
+- 用户故事：作为业务建模用户，我希望在创建和编辑操作类型（Action Type）时，能通过向导式表单配置操作影响的实体、参数（Form Content）、参数约束条件，并能实时预览表单，以便更直观地定义动作。
+- 验收标准：
+  - [x] 实现向导式的操作类型创建弹窗（包含：选择操作对象与动作类型等步骤）。
+  - [x] 升级操作类型编辑面板（支持 Form Content 配置与 Form Preview 预览）。
+  - [x] 支持参数约束配置（如单选、多选、允许其他值等）。
+- 关联（可选）：components/ontology-layers/create-entity-dialogs.tsx；components/property-editor/kinetic-editor-panel.tsx
+- 记录：创建日期 2026-03-31；完成日期 2026-03-31
+
+---
 
 ### [0028] Neo4j 存储迭代：LinkType 直接作为关系连线
 - 用户故事：作为图数据库使用者，我希望业务中的“关系类型”在图数据库中直接表现为两个对象节点之间的连线，而不是一个独立的节点，以便更符合图数据库的原生查询习惯。

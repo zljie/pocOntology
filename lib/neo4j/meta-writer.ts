@@ -1,5 +1,5 @@
 import "server-only";
-import neo4j, { ManagedTransaction } from "neo4j-driver";
+import neo4j, { ManagedTransaction, QueryResult } from "neo4j-driver";
 import { MetaCore } from "@/lib/meta/meta-core";
 import { getNeo4jDatabase, getNeo4jDriver } from "@/lib/neo4j/driver";
 
@@ -19,7 +19,7 @@ export type Neo4jUpsertMetaResult = {
   stats: Record<string, number>;
 };
 
-function counterFromResult(result: neo4j.QueryResult): Neo4jWriteSummary {
+function counterFromResult(result: QueryResult): Neo4jWriteSummary {
   const c = result.summary.counters.updates();
   return {
     nodesCreated: c.nodesCreated,

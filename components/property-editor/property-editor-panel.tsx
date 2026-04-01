@@ -5,8 +5,11 @@ import {
   X,
   Settings,
   Eye,
+  Database,
+  Search,
   Trash2,
   Plus,
+  ChevronDown,
   ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Select,
   SelectContent,
@@ -33,7 +37,18 @@ import { cn, getBaseTypeDisplayName } from "@/lib/utils";
 import { PropertyTypeIcon } from "@/components/object-type-manager/property-type-icon";
 
 export function PropertyEditorPanel() {
-  const { objectTypes, linkTypes, updateObjectType, updateLinkType, addProperty, deleteProperty } = useOntologyStore();
+  const {
+    objectTypes,
+    linkTypes,
+    ormMapping,
+    updateObjectType,
+    updateLinkType,
+    addProperty,
+    deleteProperty,
+    updateOrmMeta,
+    updateOrmTable,
+    updateOrmColumn,
+  } = useOntologyStore();
   const { selectedObjectTypeId, selectedLinkTypeId, selectObjectType, selectLinkType } = useSelectionStore();
   const { rightPanelOpen, closeRightPanel } = useUIStore();
   const [activeTab, setActiveTab] = React.useState("general");
@@ -71,6 +86,10 @@ export function PropertyEditorPanel() {
             <TabsTrigger value="properties" className="rounded-none border-b-2 border-transparent data-[state=active]:border-[#5b8def] data-[state=active]:bg-transparent text-[#6b6b6b] data-[state=active]:text-white px-4 py-2">
               属性<Badge className="ml-1.5 bg-[#2d2d2d] text-[#6b6b6b]">{selectedObjectType.properties.length}</Badge>
             </TabsTrigger>
+            <TabsTrigger value="mapping" className="rounded-none border-b-2 border-transparent data-[state=active]:border-[#5b8def] data-[state=active]:bg-transparent text-[#6b6b6b] data-[state=active]:text-white px-4 py-2">
+              <Database className="w-3.5 h-3.5 mr-1.5" />
+              映射
+            </TabsTrigger>
             <TabsTrigger value="visibility" className="rounded-none border-b-2 border-transparent data-[state=active]:border-[#5b8def] data-[state=active]:bg-transparent text-[#6b6b6b] data-[state=active]:text-white px-4 py-2">
               <Eye className="w-3.5 h-3.5 mr-1.5" />可见性
             </TabsTrigger>
@@ -81,6 +100,15 @@ export function PropertyEditorPanel() {
             </TabsContent>
             <TabsContent value="properties" className="p-4 m-0">
               <PropertiesTab objectType={selectedObjectType} onAddProperty={(prop) => addProperty(selectedObjectType.id, prop)} onDeleteProperty={(propId) => deleteProperty(selectedObjectType.id, propId)} />
+            </TabsContent>
+            <TabsContent value="mapping" className="p-4 m-0">
+              <MappingTab
+                objectType={selectedObjectType}
+                ormMapping={ormMapping}
+                onUpdateOrmMeta={updateOrmMeta}
+                onUpdateOrmTable={(updates) => updateOrmTable(selectedObjectType.id, updates)}
+                onUpdateOrmColumn={(propertyId, updates) => updateOrmColumn(selectedObjectType.id, propertyId, updates)}
+              />
             </TabsContent>
             <TabsContent value="visibility" className="p-4 m-0">
               <VisibilityTab objectType={selectedObjectType} onUpdate={(updates) => updateObjectType(selectedObjectType.id, updates)} />
@@ -307,6 +335,195 @@ function PropertiesTab({ objectType, onAddProperty, onDeleteProperty }: { object
       ) : (
         <Button variant="outline" className="w-full border-dashed border-[#2d2d2d] text-[#6b6b6b] hover:bg-[#2d2d2d] hover:text-white" onClick={() => setShowAddForm(true)}><Plus className="w-3.5 h-3.5 mr-1.5" />添加属性</Button>
       )}
+    </div>
+  );
+}
+
+function MappingTab({
+  objectType,
+  ormMapping,
+  onUpdateOrmMeta,
+  onUpdateOrmTable,
+  onUpdateOrmColumn,
+}: {
+  objectType: ObjectType;
+  ormMapping: any;
+  onUpdateOrmMeta: (updates: { databaseName?: string; schemaName?: string }) => void;
+  onUpdateOrmTable: (updates: any) => void;
+  onUpdateOrmColumn: (propertyId: string, updates: any) => void;
+}) {
+  const table = ormMapping?.tables?.[objectType.id];
+  const dialect = ormMapping?.dialect || "postgres";
+  const [searchOpen, setSearchOpen] = React.useState(true);
+  const [dbOpen, setDbOpen] = React.useState(true);
+  const [tableOpen, setTableOpen] = React.useState(true);
+  const [fieldsOpen, setFieldsOpen] = React.useState(true);
+  const [searchText, setSearchText] = React.useState("");
+
+  if (!table) {
+    return <div className="text-xs text-[#6b6b6b]">未找到该对象的映射信息</div>;
+  }
+
+  const normalizedSearch = searchText.trim().toLowerCase();
+  const filteredProps = normalizedSearch
+    ? objectType.properties.filter((prop) => {
+        const col = table.columns?.[prop.id];
+        const hay = [
+          prop.displayName,
+          prop.apiName,
+          String(col?.columnName || ""),
+          String(col?.sqlType || ""),
+        ]
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(normalizedSearch);
+      })
+    : objectType.properties;
+
+  return (
+    <div className="space-y-6">
+      <Collapsible open={searchOpen} onOpenChange={setSearchOpen}>
+        <CollapsibleTrigger asChild>
+          <button type="button" className="w-full flex items-center justify-between text-sm font-medium text-white">
+            <span className="flex items-center gap-2">
+              <Search className="w-4 h-4" /> 搜索
+            </span>
+            <ChevronDown className={cn("w-4 h-4 text-[#6b6b6b] transition-transform", searchOpen ? "rotate-180" : "")} />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-3">
+          <Input
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            className="bg-[#0d0d0d] border-[#2d2d2d]"
+            placeholder="按属性名 / apiName / column / sqlType 搜索"
+          />
+        </CollapsibleContent>
+      </Collapsible>
+
+      <Separator className="bg-[#2d2d2d]" />
+
+      <Collapsible open={dbOpen} onOpenChange={setDbOpen}>
+        <CollapsibleTrigger asChild>
+          <button type="button" className="w-full flex items-center justify-between text-sm font-medium text-white">
+            <span className="flex items-center gap-2">
+              <Database className="w-4 h-4" /> 数据库配置
+            </span>
+            <ChevronDown className={cn("w-4 h-4 text-[#6b6b6b] transition-transform", dbOpen ? "rotate-180" : "")} />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-3 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label className="text-xs text-[#6b6b6b]">Dialect</Label>
+              <Input value={dialect} disabled className="bg-[#0d0d0d] border-[#2d2d2d] font-mono text-xs opacity-70" />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-[#6b6b6b]">Schema</Label>
+              <Input
+                value={ormMapping?.schemaName || ""}
+                onChange={(e) => onUpdateOrmMeta({ schemaName: e.target.value })}
+                className="bg-[#0d0d0d] border-[#2d2d2d] font-mono text-xs"
+                placeholder="public"
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs text-[#6b6b6b]">Database</Label>
+            <Input
+              value={ormMapping?.databaseName || ""}
+              onChange={(e) => onUpdateOrmMeta({ databaseName: e.target.value })}
+              className="bg-[#0d0d0d] border-[#2d2d2d] font-mono text-xs"
+              placeholder="erp_procurement"
+            />
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+
+      <Separator className="bg-[#2d2d2d]" />
+
+      <Collapsible open={tableOpen} onOpenChange={setTableOpen}>
+        <CollapsibleTrigger asChild>
+          <button type="button" className="w-full flex items-center justify-between text-sm font-medium text-white">
+            <span>表映射</span>
+            <ChevronDown className={cn("w-4 h-4 text-[#6b6b6b] transition-transform", tableOpen ? "rotate-180" : "")} />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-3 space-y-3">
+          <div className="space-y-2">
+            <Label className="text-xs text-[#6b6b6b]">Table</Label>
+            <Input
+              value={table.tableName || ""}
+              onChange={(e) => onUpdateOrmTable({ tableName: e.target.value })}
+              className="bg-[#0d0d0d] border-[#2d2d2d] font-mono text-xs"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label className="text-xs text-[#6b6b6b]">Primary Key Strategy</Label>
+              <Input value={table.primaryKeyStrategy || ""} disabled className="bg-[#0d0d0d] border-[#2d2d2d] font-mono text-xs opacity-70" />
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs text-[#6b6b6b]">Primary Key Property</Label>
+              <Input value={table.primaryKeyPropertyId || ""} disabled className="bg-[#0d0d0d] border-[#2d2d2d] font-mono text-xs opacity-70" />
+            </div>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+
+      <Separator className="bg-[#2d2d2d]" />
+
+      <Collapsible open={fieldsOpen} onOpenChange={setFieldsOpen}>
+        <CollapsibleTrigger asChild>
+          <button type="button" className="w-full flex items-center justify-between text-sm font-medium text-white">
+            <span className="flex items-center gap-2">
+              字段映射
+              <Badge className="bg-[#2d2d2d] text-[#6b6b6b]">{filteredProps.length}</Badge>
+            </span>
+            <ChevronDown className={cn("w-4 h-4 text-[#6b6b6b] transition-transform", fieldsOpen ? "rotate-180" : "")} />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-3">
+          <ScrollArea className="h-[420px] rounded-md border border-[#2d2d2d]">
+            <div className="p-2 space-y-2">
+              {filteredProps.map((prop) => {
+                const col = table.columns?.[prop.id];
+                return (
+                  <div key={prop.id} className="p-3 rounded-lg bg-[#0d0d0d] border border-[#2d2d2d]">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm text-white truncate">{prop.displayName}</div>
+                        <div className="text-[11px] text-[#6b6b6b] font-mono truncate">
+                          {prop.apiName} · {getBaseTypeDisplayName(prop.baseType)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 mt-3">
+                      <div className="space-y-2">
+                        <Label className="text-xs text-[#6b6b6b]">Column</Label>
+                        <Input
+                          value={col?.columnName || ""}
+                          onChange={(e) => onUpdateOrmColumn(prop.id, { columnName: e.target.value })}
+                          className="bg-[#0d0d0d] border-[#2d2d2d] font-mono text-xs"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-[#6b6b6b]">SQL Type (可选)</Label>
+                        <Input
+                          value={col?.sqlType || ""}
+                          onChange={(e) => onUpdateOrmColumn(prop.id, { sqlType: e.target.value })}
+                          className="bg-[#0d0d0d] border-[#2d2d2d] font-mono text-xs"
+                          placeholder="text / timestamptz / double precision ..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </ScrollArea>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }

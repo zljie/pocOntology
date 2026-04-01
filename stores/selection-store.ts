@@ -30,6 +30,8 @@ interface SelectionStore {
         dsl?: string;
         graphqlTemplate?: string;
         templateVars?: Record<string, string>;
+        sql?: string;
+        sqlVars?: Record<string, string>;
         schemaVersion?: string;
         reasoning?: string;
         source?: "rule" | "llm";
@@ -66,6 +68,8 @@ interface SelectionStore {
     dsl?: string;
     graphqlTemplate?: string;
     templateVars?: Record<string, string>;
+    sql?: string;
+    sqlVars?: Record<string, string>;
     schemaVersion?: string;
     reasoning?: string;
     source?: "rule" | "llm";

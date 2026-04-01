@@ -162,6 +162,19 @@ export interface LinkType {
 // 动势层类型 (Kinetic Layer)
 // ============================================
 
+export type ActionInterfaceKind = "GRAPHQL" | "REST";
+
+export interface GraphqlActionInterfaceMapping {
+  kind: "GRAPHQL";
+  operationType: "query" | "mutation";
+  operationName: string;
+  rootField: string;
+  inputArgName?: string;
+  inputFields: string[];
+  inputVarTypes?: Record<string, string>;
+  outputFields: string[];
+}
+
 /**
  * 动势层 - 操作类型 (Action Type)
  * 代表业务流程中的原子操作
@@ -192,6 +205,7 @@ export interface ActionType {
   // 图标和颜色
   icon?: string;
   color?: string;
+  interfaceMapping?: GraphqlActionInterfaceMapping;
   visibility: 'PRIVATE' | 'PROJECT' | 'GLOBAL';
   layer: OntologyLayer;
   createdAt: string;

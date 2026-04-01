@@ -44,6 +44,8 @@ import {
 } from "@/stores";
 import { ObjectType, OntologyLayer, ONTOLOGY_LAYER_INFO } from "@/lib/types/ontology";
 import { cn } from "@/lib/utils";
+import { buildGraphqlTemplate } from "@/lib/semantic/graphql";
+import { buildErpSqlPreview } from "@/lib/semantic/sql";
 
 // 解析结果类型
 interface ParsedEntity {
@@ -119,6 +121,7 @@ const ACTION_KEYWORDS: Record<string, { actionId: string; actionName: string; ac
   "采购订单": { actionId: "action-create-po", actionName: "CreatePO", actionDisplayName: "创建采购订单" },
   "采购": { actionId: "action-create-po", actionName: "CreatePO", actionDisplayName: "创建采购订单" },
   "订购": { actionId: "action-create-po", actionName: "CreatePO", actionDisplayName: "创建采购订单" },
+  "提交订单": { actionId: "action-create-po", actionName: "CreatePO", actionDisplayName: "创建采购订单" },
   "申请": { actionId: "action-create-pr", actionName: "CreatePR", actionDisplayName: "创建采购申请" },
   "收货": { actionId: "action-receive-goods", actionName: "ReceiveGoods", actionDisplayName: "收货过账" },
   "入库": { actionId: "action-receive-goods", actionName: "ReceiveGoods", actionDisplayName: "收货过账" },
@@ -148,6 +151,10 @@ const PROPERTY_KEYWORDS: Record<string, { objectTypeId: string; propertyId: stri
   // ERP
   "数量": { objectTypeId: "purchase-requisition", propertyId: "quantity", propertyName: "quantity", displayName: "数量", baseType: "DOUBLE" },
   "物料编码": { objectTypeId: "material-erp", propertyId: "materialCode", propertyName: "materialCode", displayName: "物料编码", baseType: "STRING" },
+  "PR编号": { objectTypeId: "purchase-requisition", propertyId: "prNumber", propertyName: "prNumber", displayName: "PR编号", baseType: "STRING" },
+  "供应商编码": { objectTypeId: "supplier-erp", propertyId: "supplierId", propertyName: "supplierId", displayName: "供应商编码", baseType: "STRING" },
+  "PO编号": { objectTypeId: "purchase-order", propertyId: "poNumber", propertyName: "poNumber", displayName: "PO编号", baseType: "STRING" },
+  "收货数量": { objectTypeId: "goods-receipt", propertyId: "receivedQuantity", propertyName: "receivedQuantity", displayName: "收货数量", baseType: "DOUBLE" },
   "单号": { objectTypeId: "purchase-order", propertyId: "poNumber", propertyName: "poNumber", displayName: "订单编号", baseType: "STRING" },
 };
 
@@ -212,7 +219,7 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
   const [agentChatDraft, setAgentChatDraft] = useState("");
   const latestParseRequestRef = React.useRef(0);
 
-  const { actionTypes, objectTypes, businessRules } = useOntologyStore();
+  const { actionTypes, objectTypes, businessRules, ormMapping, scenario } = useOntologyStore();
   const {
     selectActionType,
     setSemanticHighlightedNodeIds,
@@ -253,7 +260,7 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
       setParsedResult(result);
       setSemanticParsedResult(result);
       setSemanticHighlightedNodeIds(deriveHighlightedObjectTypeIds(result, objectTypes, normalizedQuery));
-      const localPreview = generateSemanticPreview(result, normalizedQuery);
+      const localPreview = generateSemanticPreview(result, normalizedQuery, actionTypes, ormMapping, scenario);
       setSemanticQueryPreview(localPreview);
       const streamResolved = await requestSemanticAgentStream(normalizedQuery, (event) => {
         if (latestParseRequestRef.current !== requestId) {
@@ -313,6 +320,8 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
             dsl: event.preview.dsl || localPreview.dsl,
             graphqlTemplate: event.preview.graphqlTemplate || localPreview.graphqlTemplate,
             templateVars: event.preview.templateVars || localPreview.templateVars,
+            sql: (event.preview as any)?.sql || localPreview.sql,
+            sqlVars: (event.preview as any)?.sqlVars || localPreview.sqlVars,
             schemaVersion: "semantic-preview.v2",
             reasoning: event.preview.reasoning,
             source: "llm",
@@ -378,6 +387,8 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
             dsl: llmPreview.dsl || localPreview.dsl,
             graphqlTemplate: llmPreview.graphqlTemplate || localPreview.graphqlTemplate,
             templateVars: llmPreview.templateVars || localPreview.templateVars,
+            sql: (llmPreview as any)?.sql || localPreview.sql,
+            sqlVars: (llmPreview as any)?.sqlVars || localPreview.sqlVars,
             schemaVersion: "semantic-preview.v2",
             reasoning: llmPreview.reasoning,
             source: "llm",
@@ -428,6 +439,8 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
     actionTypes,
     objectTypes,
     businessRules,
+    ormMapping,
+    scenario,
     setSemanticHighlightedNodeIds,
     clearSemanticHighlightedNodeIds,
     setSemanticQueryPreview,
@@ -1040,7 +1053,96 @@ function normalizeLLMParsedResult(
   };
 }
 
-function generateSemanticPreview(result: ParsedIntent, query: string) {
+function generateSemanticPreview(
+  result: ParsedIntent,
+  query: string,
+  actionTypes: any[],
+  ormMapping: any,
+  scenario: any
+) {
+  const actionType = Array.isArray(actionTypes) ? actionTypes.find((at) => at.id === result.action.id) : null;
+  if (scenario === "erp" && actionType?.interfaceMapping?.kind === "GRAPHQL") {
+    const mapping = actionType.interfaceMapping;
+    const extracted = Object.fromEntries(
+      (result.suggestedProperties || [])
+        .filter((p) => p?.propertyName && typeof p?.value === "string")
+        .map((p) => [String(p.propertyName), String(p.value)])
+    );
+    const nowIso = new Date().toISOString();
+    const templateVars: Record<string, string> = {};
+    for (const f of mapping.inputFields || []) {
+      if (extracted[f]) {
+        templateVars[f] = extracted[f];
+        continue;
+      }
+      if (f.toLowerCase().includes("date")) {
+        templateVars[f] = nowIso;
+        continue;
+      }
+      if (f.toLowerCase().includes("quantity")) {
+        templateVars[f] = "10";
+        continue;
+      }
+      templateVars[f] = "";
+    }
+    if (result.action.id === "action-create-po") {
+      if (!templateVars.prNumber) templateVars.prNumber = "PR20260001";
+      if (!templateVars.supplierId) templateVars.supplierId = "SUP-0001";
+    }
+    if (result.action.id === "action-create-pr") {
+      if (!templateVars.materialCode) templateVars.materialCode = "MAT-0001";
+      if (!templateVars.quantity) templateVars.quantity = "10";
+      if (!templateVars.requiredDate) templateVars.requiredDate = nowIso;
+    }
+    if (result.action.id === "action-receive-goods") {
+      if (!templateVars.poNumber) templateVars.poNumber = "PO20260001";
+      if (!templateVars.deliveryNote) templateVars.deliveryNote = "DN-0001";
+      if (!templateVars.receivedQuantity) templateVars.receivedQuantity = "10";
+    }
+
+    const dsl =
+      result.action.id === "action-create-pr"
+        ? `ACTION CreatePR WITH PurchaseRequisition.materialCode="${templateVars.materialCode}", quantity=${templateVars.quantity}, requiredDate="${templateVars.requiredDate}"`
+        : result.action.id === "action-create-po"
+        ? `ACTION CreatePO WITH PurchaseOrder.prNumber="${templateVars.prNumber}", supplierId="${templateVars.supplierId}"`
+        : `ACTION ReceiveGoods WITH GoodsReceipt.poNumber="${templateVars.poNumber}", receivedQuantity=${templateVars.receivedQuantity}`;
+
+    const graphqlTemplate = buildGraphqlTemplate(mapping);
+    const sqlPreview = ormMapping
+      ? buildErpSqlPreview({
+          meta: {
+            scenario: "erp",
+            objectTypes: [],
+            linkTypes: [],
+            actionTypes: [],
+            dataFlows: [],
+            businessRules: [],
+            aiModels: [],
+            analysisInsights: [],
+          } as any,
+          mapping: ormMapping,
+          actionTypeId: result.action.id,
+          templateVars,
+        })
+      : null;
+
+    return {
+      query,
+      generatedAt: new Date().toISOString(),
+      semanticScenario: `系统识别到 ERP 采购动作“${result.action.displayName}”，并将输入参数映射为接口调用与数据库写入计划。`,
+      rdf: `lib:ERP_Action_${result.action.name} a lib:Action ;\n  lib:displayName "${result.action.displayName}" .`,
+      owl: `Class: lib:ERPAction\n  Annotations: rdfs:label "ERP采购动作"`,
+      swrl: `lib:Rule_ERP_Validation a lib:BusinessRule ;\n  lib:then """ true """ .`,
+      dsl,
+      graphqlTemplate,
+      templateVars,
+      sql: sqlPreview?.sql,
+      sqlVars: sqlPreview?.vars,
+      schemaVersion: "semantic-preview.v2",
+      source: "rule" as const,
+    };
+  }
+
   const bookTitleMatch = query.match(/《([^》]+)》/);
   const personNameMatch = query.match(/(?:读者|用户|会员)\s*([^\s，,。]+)/);
   const barcodeMatch = query.match(/(?:条码号?|barcode)\s*[:：]?\s*([A-Za-z0-9_-]+)/i);
@@ -1232,6 +1334,8 @@ Class: lib:Book
     dsl,
     graphqlTemplate,
     templateVars,
+    sql: undefined,
+    sqlVars: undefined,
     schemaVersion: "semantic-preview.v2",
     source: "rule" as const,
   };

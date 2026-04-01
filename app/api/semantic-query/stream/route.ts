@@ -1,4 +1,15 @@
 import { NextRequest } from "next/server";
+import {
+  ERP_ACTION_TYPES,
+  ERP_AI_MODELS,
+  ERP_ANALYSIS_INSIGHTS,
+  ERP_BUSINESS_RULES,
+  ERP_DATA_FLOWS,
+  ERP_LINK_TYPES,
+  ERP_OBJECT_TYPES,
+} from "@/lib/types/ontology-erp-sample";
+import { buildErpOrmMapping } from "@/lib/orm/erp";
+import { buildErpSqlPreview } from "@/lib/semantic/sql";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,6 +20,9 @@ const MODEL = process.env.MINIMAX_MODEL || "MiniMax-M2.7";
 
 function buildMessagesUrl(baseUrl: string) {
   const normalized = baseUrl.replace(/\/+$/, "");
+  if (normalized.endsWith("/messages")) {
+    return normalized;
+  }
   if (normalized.endsWith("/v1")) {
     return `${normalized}/messages`;
   }
@@ -37,15 +51,51 @@ function extractTextBlocks(content: any[] = []) {
 }
 
 function fallbackParsedResult(query: string) {
+  const isErp =
+    query.includes("采购") ||
+    query.includes("PR") ||
+    query.includes("PO") ||
+    query.includes("收货") ||
+    query.includes("入库") ||
+    query.includes("供应商") ||
+    query.includes("物料");
+  const isCreatePr = query.includes("采购申请") || query.includes("创建采购申请") || (isErp && query.includes("申请"));
+  const isCreatePo = query.includes("采购订单") || query.includes("创建采购订单") || query.includes("提交订单") || (isErp && query.includes("订购"));
+  const isReceive = query.includes("收货") || query.includes("入库");
   const isReturn = query.includes("还");
-  const action = isReturn
-    ? { id: "action-return", name: "ReturnBook", displayName: "还书", layer: "KINETIC" }
-    : { id: "action-checkout", name: "CheckoutBook", displayName: "借书", layer: "KINETIC" };
+
+  const action =
+    isErp && isCreatePr
+      ? { id: "action-create-pr", name: "CreatePR", displayName: "创建采购申请", layer: "KINETIC" }
+      : isErp && isReceive
+      ? { id: "action-receive-goods", name: "ReceiveGoods", displayName: "收货过账", layer: "KINETIC" }
+      : isErp && isCreatePo
+      ? { id: "action-create-po", name: "CreatePO", displayName: "创建采购订单", layer: "KINETIC" }
+      : isReturn
+      ? { id: "action-return", name: "ReturnBook", displayName: "还书", layer: "KINETIC" }
+      : { id: "action-checkout", name: "CheckoutBook", displayName: "借书", layer: "KINETIC" };
   return {
     action,
-    entities: isReturn
-      ? [{ type: "OBJECT_TYPE", id: "loan-001", name: "Loan", displayName: "借阅记录", confidence: 0.9, matchedText: "还书" }]
-      : [{ type: "OBJECT_TYPE", id: "book-001", name: "Book", displayName: "图书", confidence: 0.88, matchedText: "图书" }],
+    entities:
+      isErp && action.id === "action-create-pr"
+        ? [
+            { type: "OBJECT_TYPE", id: "purchase-requisition", name: "PurchaseRequisition", displayName: "采购申请", confidence: 0.9, matchedText: "采购申请" },
+            { type: "OBJECT_TYPE", id: "material-erp", name: "Material", displayName: "物料", confidence: 0.82, matchedText: "物料" }
+          ]
+        : isErp && action.id === "action-create-po"
+        ? [
+            { type: "OBJECT_TYPE", id: "purchase-order", name: "PurchaseOrder", displayName: "采购订单", confidence: 0.9, matchedText: "订单" },
+            { type: "OBJECT_TYPE", id: "purchase-requisition", name: "PurchaseRequisition", displayName: "采购申请", confidence: 0.78, matchedText: "PR" },
+            { type: "OBJECT_TYPE", id: "supplier-erp", name: "Supplier", displayName: "供应商", confidence: 0.8, matchedText: "供应商" }
+          ]
+        : isErp && action.id === "action-receive-goods"
+        ? [
+            { type: "OBJECT_TYPE", id: "goods-receipt", name: "GoodsReceipt", displayName: "收货单", confidence: 0.9, matchedText: "收货" },
+            { type: "OBJECT_TYPE", id: "purchase-order", name: "PurchaseOrder", displayName: "采购订单", confidence: 0.82, matchedText: "PO" }
+          ]
+        : isReturn
+        ? [{ type: "OBJECT_TYPE", id: "loan-001", name: "Loan", displayName: "借阅记录", confidence: 0.9, matchedText: "还书" }]
+        : [{ type: "OBJECT_TYPE", id: "book-001", name: "Book", displayName: "图书", confidence: 0.88, matchedText: "图书" }],
     suggestedProperties: [],
     output: isReturn
       ? [{ propertyId: "actualReturnDate", propertyName: "actualReturnDate", displayName: "实际归还时间", description: "记录归还时间" }]
@@ -55,6 +105,155 @@ function fallbackParsedResult(query: string) {
 
 function fallbackPreview(query: string) {
   const barcode = query.match(/(?:条码号?|barcode)\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] || "ABC123";
+  const prNumber =
+    query.match(/\bPR\s*([A-Za-z0-9_-]+)\b/i)?.[0]?.replace(/\s+/g, "") ||
+    query.match(/PR编号\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] ||
+    "PR20260001";
+  const supplierId =
+    query.match(/\bSUP\s*([A-Za-z0-9_-]+)\b/i)?.[0]?.replace(/\s+/g, "") ||
+    query.match(/供应商编码\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] ||
+    "SUP-0001";
+  const poNumber =
+    query.match(/\bPO\s*([A-Za-z0-9_-]+)\b/i)?.[0]?.replace(/\s+/g, "") ||
+    query.match(/PO编号\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] ||
+    "PO20260001";
+  const materialCode =
+    query.match(/物料编码\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] ||
+    "MAT-0001";
+  const quantity = query.match(/(\d+(?:\.\d+)?)\s*(?:个|件|箱|吨|kg|KG|千克)?/)?.[1] || "10";
+
+  const isErp =
+    query.includes("采购") ||
+    query.includes("PR") ||
+    query.includes("PO") ||
+    query.includes("收货") ||
+    query.includes("入库") ||
+    query.includes("供应商") ||
+    query.includes("物料");
+  const isCreatePr = query.includes("采购申请") || query.includes("创建采购申请") || (isErp && query.includes("申请"));
+  const isCreatePo = query.includes("采购订单") || query.includes("创建采购订单") || query.includes("提交订单") || (isErp && query.includes("订购"));
+  const isReceive = query.includes("收货") || query.includes("入库");
+
+  if (isErp && isCreatePr) {
+    const templateVars = { materialCode, quantity, requiredDate: new Date().toISOString() };
+    const sql = buildErpSqlPreview({
+      meta: {
+        scenario: "erp",
+        objectTypes: ERP_OBJECT_TYPES,
+        linkTypes: ERP_LINK_TYPES,
+        actionTypes: ERP_ACTION_TYPES,
+        dataFlows: ERP_DATA_FLOWS,
+        businessRules: ERP_BUSINESS_RULES,
+        aiModels: ERP_AI_MODELS,
+        analysisInsights: ERP_ANALYSIS_INSIGHTS,
+      },
+      mapping: buildErpOrmMapping({
+        scenario: "erp",
+        objectTypes: ERP_OBJECT_TYPES,
+        linkTypes: ERP_LINK_TYPES,
+        actionTypes: ERP_ACTION_TYPES,
+        dataFlows: ERP_DATA_FLOWS,
+        businessRules: ERP_BUSINESS_RULES,
+        aiModels: ERP_AI_MODELS,
+        analysisInsights: ERP_ANALYSIS_INSIGHTS,
+      }),
+      actionTypeId: "action-create-pr",
+      templateVars,
+    });
+    return {
+      semanticScenario: "系统将采购申请语义转义为 PR 创建动作，并映射为接口调用与数据库写入计划。",
+      rdf: `lib:ERP_Action_CreatePR a lib:Action .`,
+      owl: `Class: lib:ERPAction\n  Annotations: rdfs:label \"ERP采购动作\"`,
+      swrl: `lib:Rule_PR_Validation a lib:BusinessRule ;\n  lib:then \"\"\" true \"\"\" .`,
+      dsl: `ACTION CreatePR WITH PurchaseRequisition.materialCode=\"${materialCode}\", quantity=${quantity}`,
+      graphqlTemplate:
+        `mutation CreatePurchaseRequisition($materialCode: String!, $quantity: Float!, $requiredDate: String!) {\n  createPurchaseRequisition(input: { materialCode: $materialCode, quantity: $quantity, requiredDate: $requiredDate }) {\n    prNumber\n  }\n}`,
+      templateVars,
+      sql: sql.sql,
+      sqlVars: sql.vars,
+    };
+  }
+
+  if (isErp && isCreatePo) {
+    const templateVars = { prNumber, supplierId };
+    const sql = buildErpSqlPreview({
+      meta: {
+        scenario: "erp",
+        objectTypes: ERP_OBJECT_TYPES,
+        linkTypes: ERP_LINK_TYPES,
+        actionTypes: ERP_ACTION_TYPES,
+        dataFlows: ERP_DATA_FLOWS,
+        businessRules: ERP_BUSINESS_RULES,
+        aiModels: ERP_AI_MODELS,
+        analysisInsights: ERP_ANALYSIS_INSIGHTS,
+      },
+      mapping: buildErpOrmMapping({
+        scenario: "erp",
+        objectTypes: ERP_OBJECT_TYPES,
+        linkTypes: ERP_LINK_TYPES,
+        actionTypes: ERP_ACTION_TYPES,
+        dataFlows: ERP_DATA_FLOWS,
+        businessRules: ERP_BUSINESS_RULES,
+        aiModels: ERP_AI_MODELS,
+        analysisInsights: ERP_ANALYSIS_INSIGHTS,
+      }),
+      actionTypeId: "action-create-po",
+      templateVars,
+    });
+    return {
+      semanticScenario: "系统将提交订单语义转义为 PO 创建动作，并映射为接口调用与数据库写入计划。",
+      rdf: `lib:ERP_Action_CreatePO a lib:Action .`,
+      owl: `Class: lib:ERPAction\n  Annotations: rdfs:label \"ERP采购动作\"`,
+      swrl: `lib:Rule_PO_Validation a lib:BusinessRule ;\n  lib:then \"\"\" true \"\"\" .`,
+      dsl: `ACTION CreatePO WITH PurchaseOrder.prNumber=\"${prNumber}\", supplierId=\"${supplierId}\"`,
+      graphqlTemplate:
+        `mutation CreatePurchaseOrder($prNumber: String!, $supplierId: String!) {\n  createPurchaseOrder(input: { prNumber: $prNumber, supplierId: $supplierId }) {\n    poNumber\n    status\n  }\n}`,
+      templateVars,
+      sql: sql.sql,
+      sqlVars: sql.vars,
+    };
+  }
+
+  if (isErp && isReceive) {
+    const templateVars = { poNumber, deliveryNote: "DN-0001", receivedQuantity: quantity };
+    const sql = buildErpSqlPreview({
+      meta: {
+        scenario: "erp",
+        objectTypes: ERP_OBJECT_TYPES,
+        linkTypes: ERP_LINK_TYPES,
+        actionTypes: ERP_ACTION_TYPES,
+        dataFlows: ERP_DATA_FLOWS,
+        businessRules: ERP_BUSINESS_RULES,
+        aiModels: ERP_AI_MODELS,
+        analysisInsights: ERP_ANALYSIS_INSIGHTS,
+      },
+      mapping: buildErpOrmMapping({
+        scenario: "erp",
+        objectTypes: ERP_OBJECT_TYPES,
+        linkTypes: ERP_LINK_TYPES,
+        actionTypes: ERP_ACTION_TYPES,
+        dataFlows: ERP_DATA_FLOWS,
+        businessRules: ERP_BUSINESS_RULES,
+        aiModels: ERP_AI_MODELS,
+        analysisInsights: ERP_ANALYSIS_INSIGHTS,
+      }),
+      actionTypeId: "action-receive-goods",
+      templateVars,
+    });
+    return {
+      semanticScenario: "系统将收货语义转义为 GR 过账动作，并映射为接口调用与数据库写入计划。",
+      rdf: `lib:ERP_Action_ReceiveGoods a lib:Action .`,
+      owl: `Class: lib:ERPAction\n  Annotations: rdfs:label \"ERP采购动作\"`,
+      swrl: `lib:Rule_GR_Validation a lib:BusinessRule ;\n  lib:then \"\"\" true \"\"\" .`,
+      dsl: `ACTION ReceiveGoods WITH GoodsReceipt.poNumber=\"${poNumber}\", receivedQuantity=${quantity}`,
+      graphqlTemplate:
+        `mutation PostGoodsReceipt($poNumber: String!, $deliveryNote: String!, $receivedQuantity: Float!) {\n  postGoodsReceipt(input: { poNumber: $poNumber, deliveryNote: $deliveryNote, receivedQuantity: $receivedQuantity }) {\n    grNumber\n  }\n}`,
+      templateVars,
+      sql: sql.sql,
+      sqlVars: sql.vars,
+    };
+  }
+
   if (query.includes("还")) {
     return {
       semanticScenario: "系统将归还语义转义为 ReturnEvent，关联 Loan 与 Holding 并更新状态。",

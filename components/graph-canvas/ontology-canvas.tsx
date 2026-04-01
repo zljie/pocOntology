@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useCallback, useMemo } from "react";
-import dynamic from "next/dynamic";
 import {
   ReactFlow,
   Background,
@@ -31,10 +30,7 @@ import { Plus } from "lucide-react";
 import { ObjectType, LinkType } from "@/lib/types/ontology";
 import { generateId } from "@/lib/utils";
 
-const OntologyKnowledgeGraph = dynamic(
-  () => import("./ontology-knowledge-graph").then((m) => m.OntologyKnowledgeGraph),
-  { ssr: false }
-);
+import { OntologyKnowledgeGraph } from "./ontology-knowledge-graph";
 
 const nodeTypes: NodeTypes = {
   objectType: ObjectTypeNode,
