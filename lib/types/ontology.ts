@@ -175,6 +175,11 @@ export interface GraphqlActionInterfaceMapping {
   outputFields: string[];
 }
 
+export interface ApiBinding {
+  mode: 'BUILTIN_UPDATE' | 'CUSTOM_API';
+  apiEndpoint?: string;
+}
+
 /**
  * 动势层 - 操作类型 (Action Type)
  * 代表业务流程中的原子操作
@@ -206,6 +211,7 @@ export interface ActionType {
   icon?: string;
   color?: string;
   interfaceMapping?: GraphqlActionInterfaceMapping;
+  apiBinding?: ApiBinding; // API 绑定配置
   visibility: 'PRIVATE' | 'PROJECT' | 'GLOBAL';
   layer: OntologyLayer;
   createdAt: string;

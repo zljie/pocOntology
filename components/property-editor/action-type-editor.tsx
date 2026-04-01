@@ -62,6 +62,49 @@ export function ActionTypeEditor() {
     setEditingParam(null);
   };
 
+  const generatePayloadPreview = (parameters: Property[]) => {
+    const payload: Record<string, any> = {};
+    if (!parameters || parameters.length === 0) return "{\n  // 无输入参数\n}";
+    
+    parameters.forEach(p => {
+      let valPreview: any = "";
+      switch (p.baseType) {
+        case "STRING": valPreview = "string"; break;
+        case "INTEGER": valPreview = 0; break;
+        case "DOUBLE": valPreview = 0.0; break;
+        case "BOOLEAN": valPreview = false; break;
+        case "TIMESTAMP": valPreview = "2024-01-01T00:00:00Z"; break;
+        default: valPreview = null;
+      }
+      
+      // 添加注释说明
+      const key = `${p.apiName}${p.required ? "" : "?"}`;
+      payload[key] = valPreview;
+    });
+
+    // 手动拼接 JSON 字符串以支持注释
+    let jsonStr = "{\n";
+    parameters.forEach((p, idx) => {
+      const isLast = idx === parameters.length - 1;
+      let valPreview = "";
+      switch (p.baseType) {
+        case "STRING": valPreview = '"string"'; break;
+        case "INTEGER": valPreview = "0"; break;
+        case "DOUBLE": valPreview = "0.0"; break;
+        case "BOOLEAN": valPreview = "false"; break;
+        case "TIMESTAMP": valPreview = '"2024-01-01T00:00:00Z"'; break;
+        default: valPreview = "null";
+      }
+      
+      const key = `"${p.apiName}"`;
+      const comment = `// ${p.displayName}${p.required ? " (必填)" : " (可选)"}`;
+      jsonStr += `  ${key}: ${valPreview}${isLast ? "" : ","} ${comment}\n`;
+    });
+    jsonStr += "}";
+    
+    return jsonStr;
+  };
+
   return (
     <div className="flex flex-col h-full bg-[#161614]">
       <div className="flex items-center justify-between p-4 border-b border-[#2d2d2d]">
@@ -116,6 +159,57 @@ export function ActionTypeEditor() {
                     onChange={(e) => updateActionType(selectedActionType.id, { description: e.target.value })} 
                     className="bg-[#0d0d0d] border-[#2d2d2d] min-h-[80px]" 
                   />
+                </div>
+
+                <div className="pt-4 border-t border-[#2d2d2d] space-y-4">
+                  <h4 className="text-sm font-medium text-white">API 绑定设置</h4>
+                  <div className="space-y-2">
+                    <Label className="text-xs text-[#6b6b6b]">执行方式</Label>
+                    <Select
+                      value={selectedActionType.apiBinding?.mode || 'BUILTIN_UPDATE'}
+                      onValueChange={(v) => updateActionType(selectedActionType.id, {
+                        apiBinding: { ...selectedActionType.apiBinding, mode: v as any }
+                      })}
+                    >
+                      <SelectTrigger className="bg-[#0d0d0d] border-[#2d2d2d]">
+                        <SelectValue placeholder="选择执行方式" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#1a1a18] border-[#2d2d2d] text-white">
+                        <SelectItem value="BUILTIN_UPDATE">内置字典更新 (Update set where id = xx)</SelectItem>
+                        <SelectItem value="CUSTOM_API">自定义 API (例如 GraphQL Gateway)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {selectedActionType.apiBinding?.mode === 'CUSTOM_API' && (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label className="text-xs text-[#6b6b6b]">API 地址 (Endpoint)</Label>
+                        <Input
+                          placeholder="https://api.example.com/graphql"
+                          value={selectedActionType.apiBinding?.apiEndpoint || ""}
+                          onChange={(e) => updateActionType(selectedActionType.id, {
+                            apiBinding: { ...selectedActionType.apiBinding, mode: 'CUSTOM_API', apiEndpoint: e.target.value }
+                          })}
+                          className="bg-[#0d0d0d] border-[#2d2d2d] font-mono text-xs"
+                        />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs text-[#6b6b6b]">自动生成的请求体 (Payload Preview)</Label>
+                          <div className="flex items-center gap-1 text-[10px] text-[#3B82F6]">
+                            <Code className="w-3 h-3" />
+                            <span>基于参数自动映射</span>
+                          </div>
+                        </div>
+                        <div className="p-3 bg-[#0a0a0a] border border-[#2d2d2d] rounded-md overflow-x-auto">
+                          <pre className="text-[11px] font-mono text-[#a0a0a0] whitespace-pre-wrap leading-relaxed">
+                            {generatePayloadPreview(selectedActionType.inputParameters || [])}
+                          </pre>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </TabsContent>

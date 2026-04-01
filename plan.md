@@ -65,6 +65,27 @@
 
 ## In Progress（进行中）
 
+### [0037] 提交并发布当前代码到 Vercel
+- 用户故事：作为开发者，我希望将当前分支的变更提交并合并到 main，推送至远端触发 Vercel 自动部署，以便在生产环境中验证新功能。
+- 验收标准：
+  - [ ] 当前分支的变更已全部 commit
+  - [ ] 代码已合并到 main 分支
+  - [ ] 已推送至 origin/main
+- 记录：创建日期 2026-04-01
+
+---
+
+### [0036] 操作类型 API 绑定自动展示 JSON Payload
+- 用户故事：作为业务建模用户，我希望在操作类型中绑定自定义 API 时，系统能够自动根据已配置的参数，智能生成并展示出 JSON Payload 结构，以便更直观地确认请求体格式。
+- 验收标准：
+  - [ ] 在 API 绑定设置为 `CUSTOM_API` 时，自动提取 `inputParameters` 生成 JSON 结构。
+  - [ ] 在界面上以代码块形式（JSON form 结构体）直观展示该 Payload 格式。
+  - [ ] 参数类型和必填项能够在 JSON 注释或结构中得到体现。
+- 关联（可选）：components/property-editor/action-type-editor.tsx
+- 记录：创建日期 2026-04-01
+
+---
+
 ### [0004] 重写本体图谱展示（Reagraph）
 - 用户故事：作为用户，我希望在主画布以 Reagraph 方式展示本体图谱，以便更稳定地进行缩放拖拽、布局与节点联动查看。
 - 验收标准：
@@ -78,6 +99,43 @@
 ---
 
 ## Done（已完成）
+
+### [0036] 操作类型 API 绑定自动展示 JSON Payload
+- 用户故事：作为业务建模用户，我希望在操作类型中绑定自定义 API 时，系统能够自动根据已配置的参数，智能生成并展示出 JSON Payload 结构，以便更直观地确认请求体格式。
+- 验收标准：
+  - [x] 在 API 绑定设置为 `CUSTOM_API` 时，自动提取 `inputParameters` 生成 JSON 结构。
+  - [x] 在界面上以代码块形式（JSON form 结构体）直观展示该 Payload 格式。
+  - [x] 参数类型和必填项能够在 JSON 注释或结构中得到体现。
+- 关联（可选）：components/property-editor/action-type-editor.tsx
+- 记录：创建日期 2026-04-01；完成日期 2026-04-01
+
+---
+
+### [0035] 操作类型(ActionType)的 API 绑定支持
+- 用户故事：作为业务建模用户，我希望能在操作类型的配置中绑定 API，使得基础操作可以走内置的 update 字典逻辑，而自定义操作可以绑定具体的 API 地址（如 GraphQL API gateway）。
+- 验收标准：
+  - [x] 在 `ActionType` 数据结构中增加 `apiBinding` 字段。
+  - [x] 在操作类型编辑器 (`ActionTypeEditor`) 中增加“API 绑定设置”的配置面板。
+  - [x] 支持切换执行方式：内置字典更新 vs 自定义 API。
+  - [x] 如果是自定义 API，可以配置具体的 API Endpoint。
+  - [x] ORM 测试助手生成结果时能识别并体现该配置。
+- 关联（可选）：lib/types/ontology.ts；components/property-editor/action-type-editor.tsx；app/api/orm-chat/route.ts
+- 记录：创建日期 2026-04-01；完成日期 2026-04-01
+
+---
+
+### [0034] ORM框架自然语言数据库测试（ORM测试）
+- 用户故事：作为系统用户，我希望能够通过自然语言与数据库沟通，依靠Ontology中登记的信息，生成一个可被后台程序使用的稳定JSON结构（含sql和api），以便把核心功能固化为ORM框架。
+- 验收标准：
+  - [x] 顶部导航栏增加一个“ORM测试”按钮
+  - [x] 点击按钮后呼出AI聊天窗口
+  - [x] 传入自然语言后，返回一个稳定的JSON结构
+  - [x] JSON第一部分是sql（必然用于查询或update），另一部分是api（若绑定了API）
+  - [x] 信息必须基于Ontology模型推导生成，不得臆测猜想数据
+- 关联（可选）：components/layout/header.tsx；app/api
+- 记录：创建日期 2026-04-01；完成日期 2026-04-01
+
+---
 
 ### [0033] 图谱交互修复：点击节点不触发布局散开
 - 用户故事：作为建模用户，我希望点击节点时只更新选中/高亮而不重置力导向布局，以便稳定浏览图谱与连续点选。

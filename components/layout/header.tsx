@@ -38,6 +38,7 @@ import { useOntologyStore, useSelectionStore, useProposalStore } from "@/stores"
 import { useUIStore } from "@/stores";
 import { SemanticQueryInput } from "@/components/semantic-query/semantic-query-input";
 import { BusinessScenarioSandbox } from "@/components/scenario-sandbox/business-scenario-sandbox";
+import { OrmTestPanel } from "@/components/orm-test/orm-test-panel";
 import { MetaToolboxSheet } from "@/components/meta/meta-toolbox-sheet";
 import { createNeo4jDatabaseClient, upsertMetaToNeo4jClient } from "@/lib/neo4j/client";
 import type { MetaCore } from "@/lib/meta/meta-core";
@@ -66,6 +67,7 @@ export function Header() {
   const { setShowImportDialog, showProposalBanner } = useUIStore();
   const [showSemanticQuery, setShowSemanticQuery] = useState(false);
   const [showScenarioSandbox, setShowScenarioSandbox] = useState(false);
+  const [showOrmTest, setShowOrmTest] = useState(false);
   const [showMetaToolbox, setShowMetaToolbox] = useState(false);
   const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
   const [newProjectDbName, setNewProjectDbName] = useState("");
@@ -212,6 +214,16 @@ export function Header() {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            className="bg-gradient-to-r from-[#10B981] to-[#059669] hover:opacity-90 text-white"
+            onClick={() => setShowOrmTest(true)}
+          >
+            <Database className="w-4 h-4 mr-1" />
+            ORM 测试
+          </Button>
+
           <Button
             variant="default"
             size="sm"
@@ -370,6 +382,18 @@ export function Header() {
             <SheetTitle>业务场景沙盘</SheetTitle>
           </SheetHeader>
           <BusinessScenarioSandbox />
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={showOrmTest} onOpenChange={setShowOrmTest} showOverlay={false}>
+        <SheetContent
+          className="w-[500px] sm:w-[540px] bg-[#0d0d0d] border-[#2d2d2d] p-0"
+          onOpenChange={setShowOrmTest}
+        >
+          <SheetHeader className="sr-only">
+            <SheetTitle>ORM 测试助手</SheetTitle>
+          </SheetHeader>
+          <OrmTestPanel />
         </SheetContent>
       </Sheet>
 
