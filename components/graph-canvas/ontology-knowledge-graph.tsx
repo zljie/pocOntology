@@ -5,6 +5,7 @@ import * as d3 from "d3";
 import { useOntologyStore } from "@/stores";
 import { useSelectionStore } from "@/stores";
 import { useUIStore } from "@/stores";
+import { useConsultingStore } from "@/stores";
 
 // 扩展类型以包含 d3 的仿真属性
 interface D3Node extends d3.SimulationNodeDatum {
@@ -24,8 +25,30 @@ interface D3Edge extends d3.SimulationLinkDatum<D3Node> {
   isSelected: boolean;
 }
 
+const GRAPH_THEME = {
+  node: {
+    defaultFill: "#111827",
+    defaultStroke: "#334155",
+    focusFill: "#0b1220",
+    focusStroke: "#60a5fa",
+    selectedFill: "#2563eb",
+    selectedStroke: "#93c5fd",
+    semanticFill: "#7c3aed",
+    semanticStroke: "#c4b5fd",
+  },
+  edge: {
+    defaultStroke: "#475569",
+    focusStroke: "#94a3b8",
+    selectedStroke: "#60a5fa",
+    inboundStroke: "#f59e0b",
+    outboundStroke: "#22c55e",
+    label: "#94a3b8",
+  },
+} as const;
+
 export function OntologyKnowledgeGraph() {
   const { objectTypes, linkTypes } = useOntologyStore();
+  const { domains, selectedDomainId } = useConsultingStore();
   const {
     selectedNodeId,
     selectedEdgeId,
@@ -36,7 +59,7 @@ export function OntologyKnowledgeGraph() {
     selectLinkType,
     clearAll,
   } = useSelectionStore();
-  const { openRightPanel } = useUIStore();
+  const { openRightPanel, workMode } = useUIStore();
 
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -44,6 +67,7 @@ export function OntologyKnowledgeGraph() {
   const nodeSelectionRef = useRef<d3.Selection<SVGGElement, D3Node, SVGGElement, unknown> | null>(null);
   const linkLineSelectionRef = useRef<d3.Selection<SVGLineElement, D3Edge, SVGGElement, unknown> | null>(null);
   const linkTextSelectionRef = useRef<d3.Selection<SVGTextElement, D3Edge, SVGGElement, unknown> | null>(null);
+  const radiusByNodeIdRef = useRef<Record<string, number>>({});
   const positionsRef = useRef<
     Map<
       string,
@@ -55,6 +79,30 @@ export function OntologyKnowledgeGraph() {
       }
     >
   >(new Map());
+
+  const radiusByNodeId = React.useMemo(() => {
+    const selectedDomain = domains.find((d) => d.id === selectedDomainId) || null;
+    const scaleMap = selectedDomain?.entityScales || {};
+    const map: Record<string, number> = {};
+    for (const ot of objectTypes) {
+      if (workMode !== "CONSULTING") {
+        map[ot.id] = 35;
+        continue;
+      }
+      const scale = scaleMap[ot.id];
+      if (scale === "S") map[ot.id] = 28;
+      else if (scale === "M") map[ot.id] = 36;
+      else if (scale === "L") map[ot.id] = 44;
+      else if (scale === "XL") map[ot.id] = 52;
+      else if (selectedDomain && selectedDomain.objectTypeIds.includes(ot.id)) map[ot.id] = 36;
+      else map[ot.id] = 32;
+    }
+    return map;
+  }, [domains, selectedDomainId, objectTypes, workMode]);
+
+  useEffect(() => {
+    radiusByNodeIdRef.current = radiusByNodeId;
+  }, [radiusByNodeId]);
 
   // 整理数据
   const nodes: D3Node[] = React.useMemo(() => {
@@ -78,6 +126,42 @@ export function OntologyKnowledgeGraph() {
     }));
   }, [linkTypes]);
 
+  const focus = React.useMemo(() => {
+    if (selectedNodeId) {
+      const nodeIds = new Set<string>([selectedNodeId]);
+      const edgeIds = new Set<string>();
+      const inboundEdgeIds = new Set<string>();
+      const outboundEdgeIds = new Set<string>();
+      for (const e of edges) {
+        const src = typeof e.source === "string" ? e.source : e.source.id;
+        const tgt = typeof e.target === "string" ? e.target : e.target.id;
+        if (src === selectedNodeId || tgt === selectedNodeId) {
+          edgeIds.add(e.id);
+          nodeIds.add(src);
+          nodeIds.add(tgt);
+          if (src === selectedNodeId) outboundEdgeIds.add(e.id);
+          if (tgt === selectedNodeId) inboundEdgeIds.add(e.id);
+        }
+      }
+      return { nodeIds, edgeIds, inboundEdgeIds, outboundEdgeIds };
+    }
+
+    if (selectedEdgeId) {
+      const nodeIds = new Set<string>();
+      const edgeIds = new Set<string>([selectedEdgeId]);
+      const e = edges.find((x) => x.id === selectedEdgeId);
+      if (e) {
+        const src = typeof e.source === "string" ? e.source : e.source.id;
+        const tgt = typeof e.target === "string" ? e.target : e.target.id;
+        nodeIds.add(src);
+        nodeIds.add(tgt);
+      }
+      return { nodeIds, edgeIds, inboundEdgeIds: new Set<string>(), outboundEdgeIds: new Set<string>() };
+    }
+
+    return null;
+  }, [selectedNodeId, selectedEdgeId, edges]);
+
   useEffect(() => {
     if (!svgRef.current || !containerRef.current) return;
 
@@ -90,32 +174,26 @@ export function OntologyKnowledgeGraph() {
 
     // 定义箭头标记
     const defs = svg.append("defs");
-    
-    // 普通箭头
-    defs.append("marker")
-      .attr("id", "arrow")
-      .attr("viewBox", "0 -5 10 10")
-      .attr("refX", 38) // 调整箭头位置以适应节点半径
-      .attr("refY", 0)
-      .attr("markerWidth", 6)
-      .attr("markerHeight", 6)
-      .attr("orient", "auto")
-      .append("path")
-      .attr("d", "M0,-5L10,0L0,5")
-      .attr("fill", "#3d3d3d");
-      
-    // 选中状态的箭头
-    defs.append("marker")
-      .attr("id", "arrow-selected")
-      .attr("viewBox", "0 -5 10 10")
-      .attr("refX", 43)
-      .attr("refY", 0)
-      .attr("markerWidth", 6)
-      .attr("markerHeight", 6)
-      .attr("orient", "auto")
-      .append("path")
-      .attr("d", "M0,-5L10,0L0,5")
-      .attr("fill", "#5b8def");
+
+    const addArrow = (id: string, fill: string) => {
+      defs.append("marker")
+        .attr("id", id)
+        .attr("viewBox", "0 -6 12 12")
+        .attr("refX", 12)
+        .attr("refY", 0)
+        .attr("markerWidth", 12)
+        .attr("markerHeight", 12)
+        .attr("markerUnits", "userSpaceOnUse")
+        .attr("orient", "auto")
+        .append("path")
+        .attr("d", "M0,-6L12,0L0,6")
+        .attr("fill", fill);
+    };
+
+    addArrow("arrow-default", GRAPH_THEME.edge.defaultStroke);
+    addArrow("arrow-selected", GRAPH_THEME.edge.selectedStroke);
+    addArrow("arrow-inbound", GRAPH_THEME.edge.inboundStroke);
+    addArrow("arrow-outbound", GRAPH_THEME.edge.outboundStroke);
 
     // 主容器（用于缩放）
     const g = svg.append("g");
@@ -169,9 +247,10 @@ export function OntologyKnowledgeGraph() {
       .attr("class", "link");
 
     const linkPath = link.append("line")
-      .attr("stroke", "#3d3d3d")
-      .attr("stroke-width", 1.5)
-      .attr("marker-end", "url(#arrow)")
+      .attr("stroke", GRAPH_THEME.edge.defaultStroke)
+      .attr("stroke-width", 1.4)
+      .attr("stroke-linecap", "round")
+      .attr("marker-end", "url(#arrow-default)")
       .style("cursor", "pointer")
       .on("click", (event, d) => {
         event.stopPropagation();
@@ -183,7 +262,7 @@ export function OntologyKnowledgeGraph() {
 
     const linkText = link.append("text")
       .text((d) => d.label)
-      .attr("fill", "#8b8b8b")
+      .attr("fill", GRAPH_THEME.edge.label)
       .attr("font-size", "12px")
       .attr("text-anchor", "middle")
       .attr("dy", -5)
@@ -222,8 +301,8 @@ export function OntologyKnowledgeGraph() {
     // 节点圆圈
     node.append("circle")
       .attr("r", (d) => d.radius)
-      .attr("fill", "#2d2d2d")
-      .attr("stroke", "#4a4a4a")
+      .attr("fill", GRAPH_THEME.node.defaultFill)
+      .attr("stroke", GRAPH_THEME.node.defaultStroke)
       .attr("stroke-width", 2);
 
     // 节点主标题
@@ -246,14 +325,88 @@ export function OntologyKnowledgeGraph() {
     // 仿真每一步更新位置
     simulation.on("tick", () => {
       linkPath
-        .attr("x1", (d: any) => d.source.x)
-        .attr("y1", (d: any) => d.source.y)
-        .attr("x2", (d: any) => d.target.x)
-        .attr("y2", (d: any) => d.target.y);
+        .attr("x1", (d: any) => {
+          const sx = d.source.x ?? 0;
+          const sy = d.source.y ?? 0;
+          const tx = d.target.x ?? 0;
+          const ty = d.target.y ?? 0;
+          const dx = tx - sx;
+          const dy = ty - sy;
+          const dist = Math.hypot(dx, dy) || 1;
+          const r = (radiusByNodeIdRef.current[d.source.id] ?? 35) + 6;
+          return sx + (dx / dist) * r;
+        })
+        .attr("y1", (d: any) => {
+          const sx = d.source.x ?? 0;
+          const sy = d.source.y ?? 0;
+          const tx = d.target.x ?? 0;
+          const ty = d.target.y ?? 0;
+          const dx = tx - sx;
+          const dy = ty - sy;
+          const dist = Math.hypot(dx, dy) || 1;
+          const r = (radiusByNodeIdRef.current[d.source.id] ?? 35) + 6;
+          return sy + (dy / dist) * r;
+        })
+        .attr("x2", (d: any) => {
+          const sx = d.source.x ?? 0;
+          const sy = d.source.y ?? 0;
+          const tx = d.target.x ?? 0;
+          const ty = d.target.y ?? 0;
+          const dx = tx - sx;
+          const dy = ty - sy;
+          const dist = Math.hypot(dx, dy) || 1;
+          const r = (radiusByNodeIdRef.current[d.target.id] ?? 35) + 10;
+          return tx - (dx / dist) * r;
+        })
+        .attr("y2", (d: any) => {
+          const sx = d.source.x ?? 0;
+          const sy = d.source.y ?? 0;
+          const tx = d.target.x ?? 0;
+          const ty = d.target.y ?? 0;
+          const dx = tx - sx;
+          const dy = ty - sy;
+          const dist = Math.hypot(dx, dy) || 1;
+          const r = (radiusByNodeIdRef.current[d.target.id] ?? 35) + 10;
+          return ty - (dy / dist) * r;
+        });
 
       linkText
-        .attr("x", (d: any) => (d.source.x + d.target.x) / 2)
-        .attr("y", (d: any) => (d.source.y + d.target.y) / 2);
+        .attr("x", (d: any) => {
+          const sx = d.source.x ?? 0;
+          const sy = d.source.y ?? 0;
+          const tx = d.target.x ?? 0;
+          const ty = d.target.y ?? 0;
+          const dx = tx - sx;
+          const dy = ty - sy;
+          const dist = Math.hypot(dx, dy) || 1;
+          const r1 = (radiusByNodeIdRef.current[d.source.id] ?? 35) + 6;
+          const r2 = (radiusByNodeIdRef.current[d.target.id] ?? 35) + 10;
+          const x1 = sx + (dx / dist) * r1;
+          const y1 = sy + (dy / dist) * r1;
+          const x2 = tx - (dx / dist) * r2;
+          const y2 = ty - (dy / dist) * r2;
+          const mx = (x1 + x2) / 2;
+          const my = (y1 + y2) / 2;
+          return mx + (-dy / dist) * 10;
+        })
+        .attr("y", (d: any) => {
+          const sx = d.source.x ?? 0;
+          const sy = d.source.y ?? 0;
+          const tx = d.target.x ?? 0;
+          const ty = d.target.y ?? 0;
+          const dx = tx - sx;
+          const dy = ty - sy;
+          const dist = Math.hypot(dx, dy) || 1;
+          const r1 = (radiusByNodeIdRef.current[d.source.id] ?? 35) + 6;
+          const r2 = (radiusByNodeIdRef.current[d.target.id] ?? 35) + 10;
+          const x1 = sx + (dx / dist) * r1;
+          const y1 = sy + (dy / dist) * r1;
+          const x2 = tx - (dx / dist) * r2;
+          const y2 = ty - (dy / dist) * r2;
+          const mx = (x1 + x2) / 2;
+          const my = (y1 + y2) / 2;
+          return my + (dx / dist) * 10;
+        });
 
       node.attr("transform", (d: any) => `translate(${d.x},${d.y})`);
     });
@@ -277,18 +430,91 @@ export function OntologyKnowledgeGraph() {
     const linkTextSel = linkTextSelectionRef.current;
     if (!nodeSel || !linkLineSel || !linkTextSel) return;
 
+    const hasFocus = Boolean(focus);
+
+    nodeSel
+      .attr("opacity", (d) => {
+        if (!hasFocus) return 1;
+        return focus?.nodeIds.has(d.id) ? 1 : 0.12;
+      });
+
     nodeSel.select("circle")
-      .attr("fill", (d) => (selectedNodeId === d.id ? "#5b8def" : semanticHighlightedNodeIds.includes(d.id) ? "#8B5CF6" : "#2d2d2d"))
-      .attr("stroke", (d) => (selectedNodeId === d.id ? "#8ab4f8" : semanticHighlightedNodeIds.includes(d.id) ? "#a78bfa" : "#4a4a4a"))
-      .attr("stroke-width", (d) => (selectedNodeId === d.id || semanticHighlightedNodeIds.includes(d.id) ? 2.5 : 2));
+      .attr("r", (d) => radiusByNodeId[d.id] ?? 35)
+      .attr("fill", (d) => {
+        if (selectedNodeId === d.id) return GRAPH_THEME.node.selectedFill;
+        if (semanticHighlightedNodeIds.includes(d.id)) return GRAPH_THEME.node.semanticFill;
+        if (hasFocus && focus?.nodeIds.has(d.id)) return GRAPH_THEME.node.focusFill;
+        return GRAPH_THEME.node.defaultFill;
+      })
+      .attr("stroke", (d) => {
+        if (selectedNodeId === d.id) return GRAPH_THEME.node.selectedStroke;
+        if (semanticHighlightedNodeIds.includes(d.id)) return GRAPH_THEME.node.semanticStroke;
+        if (hasFocus && focus?.nodeIds.has(d.id)) return GRAPH_THEME.node.focusStroke;
+        return GRAPH_THEME.node.defaultStroke;
+      })
+      .attr("stroke-width", (d) => {
+        if (selectedNodeId === d.id) return 3;
+        if (semanticHighlightedNodeIds.includes(d.id)) return 2.6;
+        if (hasFocus && focus?.nodeIds.has(d.id)) return 2.4;
+        return 2;
+      });
 
     linkLineSel
-      .attr("stroke", (d) => (selectedEdgeId === d.id ? "#5b8def" : "#3d3d3d"))
-      .attr("stroke-width", (d) => (selectedEdgeId === d.id ? 3 : 1.5))
-      .attr("marker-end", (d) => (selectedEdgeId === d.id ? "url(#arrow-selected)" : "url(#arrow)"));
+      .attr("opacity", (d) => {
+        if (!hasFocus) return 1;
+        return focus?.edgeIds.has(d.id) ? 1 : 0.08;
+      })
+      .attr("stroke", (d) => {
+        if (selectedEdgeId === d.id) return GRAPH_THEME.edge.selectedStroke;
+        if (hasFocus && focus?.edgeIds.has(d.id) && selectedNodeId) {
+          if (focus.outboundEdgeIds.has(d.id)) return GRAPH_THEME.edge.outboundStroke;
+          if (focus.inboundEdgeIds.has(d.id)) return GRAPH_THEME.edge.inboundStroke;
+          return GRAPH_THEME.edge.focusStroke;
+        }
+        if (hasFocus && focus?.edgeIds.has(d.id)) return GRAPH_THEME.edge.focusStroke;
+        return GRAPH_THEME.edge.defaultStroke;
+      })
+      .attr("stroke-width", (d) => {
+        if (selectedEdgeId === d.id) return 3.2;
+        if (hasFocus && focus?.edgeIds.has(d.id)) return 2.2;
+        return 1.4;
+      })
+      .attr("stroke-dasharray", (d) => {
+        if (!hasFocus) return null;
+        return focus?.edgeIds.has(d.id) ? null : "2,10";
+      })
+      .attr("marker-end", (d) => {
+        if (selectedEdgeId === d.id) return "url(#arrow-selected)";
+        if (hasFocus && focus?.edgeIds.has(d.id) && selectedNodeId) {
+          if (focus.outboundEdgeIds.has(d.id)) return "url(#arrow-outbound)";
+          if (focus.inboundEdgeIds.has(d.id)) return "url(#arrow-inbound)";
+          return "url(#arrow-default)";
+        }
+        return "url(#arrow-default)";
+      });
 
-    linkTextSel.attr("fill", (d) => (selectedEdgeId === d.id ? "#5b8def" : "#8b8b8b"));
-  }, [selectedNodeId, selectedEdgeId, semanticHighlightedNodeIds]);
+    linkTextSel
+      .attr("opacity", (d) => {
+        if (!hasFocus) return 1;
+        return focus?.edgeIds.has(d.id) ? 1 : 0.08;
+      })
+      .attr("fill", (d) => {
+        if (selectedEdgeId === d.id) return GRAPH_THEME.edge.selectedStroke;
+        if (hasFocus && focus?.edgeIds.has(d.id) && selectedNodeId) {
+          if (focus.outboundEdgeIds.has(d.id)) return GRAPH_THEME.edge.outboundStroke;
+          if (focus.inboundEdgeIds.has(d.id)) return GRAPH_THEME.edge.inboundStroke;
+          return GRAPH_THEME.edge.label;
+        }
+        return GRAPH_THEME.edge.label;
+      });
+  }, [selectedNodeId, selectedEdgeId, semanticHighlightedNodeIds, radiusByNodeId, focus]);
+
+  useEffect(() => {
+    const simulation = simulationRef.current;
+    if (!simulation) return;
+    simulation.force("collide", d3.forceCollide<D3Node>().radius((d) => (radiusByNodeId[d.id] ?? 35) + 20));
+    simulation.alpha(0.15).restart();
+  }, [radiusByNodeId]);
 
   return (
     <div ref={containerRef} className="relative w-full h-full bg-[#0b0b0b]">
