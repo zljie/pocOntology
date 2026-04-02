@@ -26,6 +26,15 @@ import {
   ERP_AI_MODELS,
   ERP_ANALYSIS_INSIGHTS,
 } from '@/lib/types/ontology-erp-sample';
+import {
+  SAP_HCM_OBJECT_TYPES,
+  SAP_HCM_LINK_TYPES,
+  SAP_HCM_ACTION_TYPES,
+  SAP_HCM_DATA_FLOWS,
+  SAP_HCM_BUSINESS_RULES,
+  SAP_HCM_AI_MODELS,
+  SAP_HCM_ANALYSIS_INSIGHTS,
+} from '@/lib/types/ontology-sap-hcm-sample';
 import { MetaCore, MetaScenario, MetaSnapshot, stableHash } from '@/lib/meta/meta-core';
 import { OrmMapping } from '@/lib/orm/orm-mapping';
 import { buildDefaultOrmMapping } from '@/lib/orm/postgres';
@@ -102,7 +111,7 @@ interface OntologyStore {
   getAnalysisInsight: (id: string) => AnalysisInsight | undefined;
 
   // Utility Actions
-  loadSampleData: (scenario?: 'library' | 'erp') => void;
+  loadSampleData: (scenario?: 'library' | 'erp' | 'sap_hcm') => void;
   clearAll: () => void;
   updateLastSaved: () => void;
   replaceAll: (meta: MetaCore) => void;
@@ -454,6 +463,7 @@ export const useOntologyStore = create<OntologyStore>()(
             aiModels: ERP_AI_MODELS,
             analysisInsights: ERP_ANALYSIS_INSIGHTS,
           };
+          const mapping = buildOrmMapping(meta);
           set({
             objectTypes: ERP_OBJECT_TYPES,
             linkTypes: ERP_LINK_TYPES,
@@ -463,7 +473,33 @@ export const useOntologyStore = create<OntologyStore>()(
             aiModels: ERP_AI_MODELS,
             analysisInsights: ERP_ANALYSIS_INSIGHTS,
             scenario: 'erp',
-            ormMapping: buildOrmMapping(meta),
+            ormMapping: mapping,
+            lastSaved: new Date().toISOString(),
+          });
+        } else if (scenario === 'sap_hcm') {
+          const meta: MetaCore = {
+            scenario: 'sap_hcm',
+            objectTypes: SAP_HCM_OBJECT_TYPES,
+            linkTypes: SAP_HCM_LINK_TYPES,
+            actionTypes: SAP_HCM_ACTION_TYPES,
+            dataFlows: SAP_HCM_DATA_FLOWS,
+            businessRules: SAP_HCM_BUSINESS_RULES,
+            aiModels: SAP_HCM_AI_MODELS,
+            analysisInsights: SAP_HCM_ANALYSIS_INSIGHTS,
+          };
+          const mapping = buildOrmMapping(meta);
+          mapping.databaseName = 'sap_hcm';
+          mapping.schemaName = 'hcm';
+          set({
+            objectTypes: SAP_HCM_OBJECT_TYPES,
+            linkTypes: SAP_HCM_LINK_TYPES,
+            actionTypes: SAP_HCM_ACTION_TYPES,
+            dataFlows: SAP_HCM_DATA_FLOWS,
+            businessRules: SAP_HCM_BUSINESS_RULES,
+            aiModels: SAP_HCM_AI_MODELS,
+            analysisInsights: SAP_HCM_ANALYSIS_INSIGHTS,
+            scenario: 'sap_hcm',
+            ormMapping: mapping,
             lastSaved: new Date().toISOString(),
           });
         } else {
@@ -477,6 +513,7 @@ export const useOntologyStore = create<OntologyStore>()(
             aiModels: SAMPLE_AI_MODELS,
             analysisInsights: SAMPLE_ANALYSIS_INSIGHTS,
           };
+          const mapping = buildOrmMapping(meta);
           set({
             objectTypes: SAMPLE_OBJECT_TYPES,
             linkTypes: SAMPLE_LINK_TYPES,
@@ -486,7 +523,7 @@ export const useOntologyStore = create<OntologyStore>()(
             aiModels: SAMPLE_AI_MODELS,
             analysisInsights: SAMPLE_ANALYSIS_INSIGHTS,
             scenario: 'library',
-            ormMapping: buildOrmMapping(meta),
+            ormMapping: mapping,
             lastSaved: new Date().toISOString(),
           });
         }

@@ -134,3 +134,197 @@ select "grNumber" from inserted;`;
   };
 }
 
+export function buildSapHcmSqlPreview(params: {
+  meta: MetaCore;
+  mapping: OrmMapping;
+  actionTypeId: string;
+  templateVars: Record<string, string>;
+}) {
+  const { mapping, actionTypeId, templateVars } = params;
+
+  if (actionTypeId === "action-hire-employee") {
+    const employeeTable = tableNameOf("employee-hcm", mapping);
+    const employmentTable = tableNameOf("employment-hcm", mapping);
+
+    const employeeCols = [
+      ["employeeId", columnNameOf("employee-hcm", "employeeId", mapping)],
+      ["fullName", columnNameOf("employee-hcm", "fullName", mapping)],
+      ["status", columnNameOf("employee-hcm", "status", mapping)],
+      ["hireDate", columnNameOf("employee-hcm", "hireDate", mapping)],
+      ["orgUnitId", columnNameOf("employee-hcm", "orgUnitId", mapping)],
+      ["positionId", columnNameOf("employee-hcm", "positionId", mapping)],
+      ["costCenterId", columnNameOf("employee-hcm", "costCenterId", mapping)],
+      ["payrollAreaId", columnNameOf("employee-hcm", "payrollAreaId", mapping)],
+      ["personnelAreaId", columnNameOf("employee-hcm", "personnelAreaId", mapping)],
+    ];
+
+    const employmentCols = [
+      ["employmentId", columnNameOf("employment-hcm", "employmentId", mapping)],
+      ["employeeId", columnNameOf("employment-hcm", "employeeId", mapping)],
+      ["employmentType", columnNameOf("employment-hcm", "employmentType", mapping)],
+      ["startDate", columnNameOf("employment-hcm", "startDate", mapping)],
+      ["employmentStatus", columnNameOf("employment-hcm", "status", mapping)],
+    ];
+
+    const sql = `with inserted_employee as (
+  insert into ${quoteIdent(employeeTable)} (
+    ${employeeCols.map(([, c]) => quoteIdent(c)).join(",\n    ")}
+  ) values (
+    ${employeeCols.map(([k]) => `:${k}`).join(",\n    ")}
+  )
+  returning ${quoteIdent(columnNameOf("employee-hcm", "employeeId", mapping))} as "employeeId"
+),
+inserted_employment as (
+  insert into ${quoteIdent(employmentTable)} (
+    ${employmentCols.map(([, c]) => quoteIdent(c)).join(",\n    ")}
+  ) values (
+    ${employmentCols.map(([k]) => (k === "employeeId" ? `(select "employeeId" from inserted_employee)` : `:${k}`)).join(",\n    ")}
+  )
+  returning ${quoteIdent(columnNameOf("employment-hcm", "employmentId", mapping))} as "employmentId"
+)
+select (select "employeeId" from inserted_employee) as "employeeId",
+       (select "employmentId" from inserted_employment) as "employmentId";`;
+
+    const vars = {
+      employeeId: templateVars.employeeId || "E20260001",
+      fullName: templateVars.fullName || "张三",
+      status: templateVars.status || "ACTIVE",
+      hireDate: templateVars.hireDate || new Date().toISOString(),
+      orgUnitId: templateVars.orgUnitId || "OU-1000",
+      positionId: templateVars.positionId || "POS-1000",
+      costCenterId: templateVars.costCenterId || "CC-1000",
+      payrollAreaId: templateVars.payrollAreaId || "PA-01",
+      personnelAreaId: templateVars.personnelAreaId || "PE-01",
+      employmentId: templateVars.employmentId || "EMP-20260001",
+      employmentType: templateVars.employmentType || "FULL_TIME",
+      startDate: templateVars.startDate || templateVars.hireDate || new Date().toISOString(),
+      employmentStatus: templateVars.employmentStatus || "ACTIVE",
+    } as Record<string, string>;
+    return { sql, vars };
+  }
+
+  if (actionTypeId === "action-transfer-employee") {
+    const employeeTable = tableNameOf("employee-hcm", mapping);
+    const sql = `update ${quoteIdent(employeeTable)}
+set ${quoteIdent(columnNameOf("employee-hcm", "orgUnitId", mapping))} = :orgUnitId,
+    ${quoteIdent(columnNameOf("employee-hcm", "positionId", mapping))} = :positionId
+where ${quoteIdent(columnNameOf("employee-hcm", "employeeId", mapping))} = :employeeId
+returning ${quoteIdent(columnNameOf("employee-hcm", "employeeId", mapping))} as "employeeId";`;
+    const vars = {
+      employeeId: templateVars.employeeId || "E20260001",
+      orgUnitId: templateVars.orgUnitId || "OU-2000",
+      positionId: templateVars.positionId || "POS-2000",
+      effectiveDate: templateVars.effectiveDate || new Date().toISOString(),
+    };
+    return { sql, vars };
+  }
+
+  if (actionTypeId === "action-record-time-entry") {
+    const timeTable = tableNameOf("time-entry-hcm", mapping);
+    const cols = [
+      ["timeEntryId", columnNameOf("time-entry-hcm", "timeEntryId", mapping)],
+      ["employeeId", columnNameOf("time-entry-hcm", "employeeId", mapping)],
+      ["workDate", columnNameOf("time-entry-hcm", "workDate", mapping)],
+      ["hours", columnNameOf("time-entry-hcm", "hours", mapping)],
+      ["timeType", columnNameOf("time-entry-hcm", "timeType", mapping)],
+      ["status", columnNameOf("time-entry-hcm", "status", mapping)],
+    ];
+    const sql = `insert into ${quoteIdent(timeTable)} (
+  ${cols.map(([, c]) => quoteIdent(c)).join(",\n  ")}
+) values (
+  ${cols.map(([k]) => `:${k}`).join(",\n  ")}
+)
+returning ${quoteIdent(columnNameOf("time-entry-hcm", "timeEntryId", mapping))} as "timeEntryId";`;
+    const vars = {
+      timeEntryId: templateVars.timeEntryId || "TE-20260001",
+      employeeId: templateVars.employeeId || "E20260001",
+      workDate: templateVars.workDate || new Date().toISOString(),
+      hours: templateVars.hours || "8",
+      timeType: templateVars.timeType || "WORK",
+      status: templateVars.status || "SUBMITTED",
+    };
+    return { sql, vars };
+  }
+
+  if (actionTypeId === "action-request-absence") {
+    const absTable = tableNameOf("absence-request-hcm", mapping);
+    const cols = [
+      ["requestId", columnNameOf("absence-request-hcm", "requestId", mapping)],
+      ["employeeId", columnNameOf("absence-request-hcm", "employeeId", mapping)],
+      ["absenceType", columnNameOf("absence-request-hcm", "absenceType", mapping)],
+      ["startDate", columnNameOf("absence-request-hcm", "startDate", mapping)],
+      ["endDate", columnNameOf("absence-request-hcm", "endDate", mapping)],
+      ["status", columnNameOf("absence-request-hcm", "status", mapping)],
+    ];
+    const sql = `insert into ${quoteIdent(absTable)} (
+  ${cols.map(([, c]) => quoteIdent(c)).join(",\n  ")}
+) values (
+  ${cols.map(([k]) => `:${k}`).join(",\n  ")}
+)
+returning ${quoteIdent(columnNameOf("absence-request-hcm", "requestId", mapping))} as "requestId",
+          ${quoteIdent(columnNameOf("absence-request-hcm", "status", mapping))} as "status";`;
+    const vars = {
+      requestId: templateVars.requestId || "AR-20260001",
+      employeeId: templateVars.employeeId || "E20260001",
+      absenceType: templateVars.absenceType || "ANNUAL",
+      startDate: templateVars.startDate || new Date().toISOString(),
+      endDate: templateVars.endDate || new Date().toISOString(),
+      status: templateVars.status || "PENDING",
+    };
+    return { sql, vars };
+  }
+
+  if (actionTypeId === "action-approve-absence") {
+    const absTable = tableNameOf("absence-request-hcm", mapping);
+    const sql = `update ${quoteIdent(absTable)}
+set ${quoteIdent(columnNameOf("absence-request-hcm", "status", mapping))} = :status,
+    ${quoteIdent(columnNameOf("absence-request-hcm", "approverEmployeeId", mapping))} = :approverEmployeeId,
+    ${quoteIdent(columnNameOf("absence-request-hcm", "approvedAt", mapping))} = :approvedAt
+where ${quoteIdent(columnNameOf("absence-request-hcm", "requestId", mapping))} = :requestId
+returning ${quoteIdent(columnNameOf("absence-request-hcm", "requestId", mapping))} as "requestId",
+          ${quoteIdent(columnNameOf("absence-request-hcm", "status", mapping))} as "status";`;
+    const decision = (templateVars.decision || "APPROVE").toUpperCase();
+    const status = decision === "REJECT" ? "REJECTED" : "APPROVED";
+    const vars = {
+      requestId: templateVars.requestId || "AR-20260001",
+      approverEmployeeId: templateVars.approverEmployeeId || "E20260002",
+      decision,
+      status,
+      approvedAt: templateVars.approvedAt || new Date().toISOString(),
+    };
+    return { sql, vars };
+  }
+
+  if (actionTypeId === "action-run-payroll") {
+    const runTable = tableNameOf("payroll-run-hcm", mapping);
+    const cols = [
+      ["payrollRunId", columnNameOf("payroll-run-hcm", "payrollRunId", mapping)],
+      ["payrollAreaId", columnNameOf("payroll-run-hcm", "payrollAreaId", mapping)],
+      ["periodStart", columnNameOf("payroll-run-hcm", "periodStart", mapping)],
+      ["periodEnd", columnNameOf("payroll-run-hcm", "periodEnd", mapping)],
+      ["runDate", columnNameOf("payroll-run-hcm", "runDate", mapping)],
+      ["status", columnNameOf("payroll-run-hcm", "status", mapping)],
+    ];
+    const sql = `insert into ${quoteIdent(runTable)} (
+  ${cols.map(([, c]) => quoteIdent(c)).join(",\n  ")}
+) values (
+  ${cols.map(([k]) => `:${k}`).join(",\n  ")}
+)
+returning ${quoteIdent(columnNameOf("payroll-run-hcm", "payrollRunId", mapping))} as "payrollRunId",
+          ${quoteIdent(columnNameOf("payroll-run-hcm", "status", mapping))} as "status";`;
+    const vars = {
+      payrollRunId: templateVars.payrollRunId || "PRUN-20260001",
+      payrollAreaId: templateVars.payrollAreaId || "PA-01",
+      periodStart: templateVars.periodStart || new Date().toISOString(),
+      periodEnd: templateVars.periodEnd || new Date().toISOString(),
+      runDate: templateVars.runDate || new Date().toISOString(),
+      status: templateVars.status || "CREATED",
+    };
+    return { sql, vars };
+  }
+
+  return {
+    sql: "/* 暂无 SQL 计划：未识别到可落地的 HCM 动作 */",
+    vars: templateVars,
+  };
+}

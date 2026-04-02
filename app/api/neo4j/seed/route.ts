@@ -18,6 +18,15 @@ import {
   ERP_LINK_TYPES,
   ERP_OBJECT_TYPES,
 } from "@/lib/types/ontology-erp-sample";
+import {
+  SAP_HCM_ACTION_TYPES,
+  SAP_HCM_AI_MODELS,
+  SAP_HCM_ANALYSIS_INSIGHTS,
+  SAP_HCM_BUSINESS_RULES,
+  SAP_HCM_DATA_FLOWS,
+  SAP_HCM_LINK_TYPES,
+  SAP_HCM_OBJECT_TYPES,
+} from "@/lib/types/ontology-sap-hcm-sample";
 import { MetaCore, MetaScenario } from "@/lib/meta/meta-core";
 
 export const runtime = "nodejs";
@@ -33,6 +42,18 @@ function buildMeta(scenario: MetaScenario): MetaCore {
       businessRules: ERP_BUSINESS_RULES,
       aiModels: ERP_AI_MODELS,
       analysisInsights: ERP_ANALYSIS_INSIGHTS,
+    };
+  }
+  if (scenario === "sap_hcm") {
+    return {
+      scenario,
+      objectTypes: SAP_HCM_OBJECT_TYPES,
+      linkTypes: SAP_HCM_LINK_TYPES,
+      actionTypes: SAP_HCM_ACTION_TYPES,
+      dataFlows: SAP_HCM_DATA_FLOWS,
+      businessRules: SAP_HCM_BUSINESS_RULES,
+      aiModels: SAP_HCM_AI_MODELS,
+      analysisInsights: SAP_HCM_ANALYSIS_INSIGHTS,
     };
   }
 
@@ -51,7 +72,7 @@ function buildMeta(scenario: MetaScenario): MetaCore {
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const scenarioRaw = body?.scenario?.toString?.().trim?.();
-  const scenario: MetaScenario = scenarioRaw === "erp" ? "erp" : "library";
+  const scenario: MetaScenario = scenarioRaw === "erp" ? "erp" : scenarioRaw === "sap_hcm" ? "sap_hcm" : "library";
   const reset = Boolean(body?.reset);
 
   const meta = buildMeta(scenario);
@@ -63,4 +84,3 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ success: true, result });
 }
-

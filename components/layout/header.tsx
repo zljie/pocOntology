@@ -13,6 +13,7 @@ import {
   X,
   Boxes,
   FilePlus,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -327,6 +328,13 @@ export function Header() {
               >
                 <Boxes className="w-4 h-4 mr-2" />
                 ERP采购业务模块
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => loadSampleData('sap_hcm')}
+                className="hover:bg-[#2d2d2d] hover:text-white focus:bg-[#2d2d2d] focus:text-white cursor-pointer"
+              >
+                <Users className="w-4 h-4 mr-2" />
+                SAP HCM 模块
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

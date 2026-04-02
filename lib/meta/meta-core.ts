@@ -11,7 +11,7 @@ import {
 } from "@/lib/types/ontology";
 import { isCamelCase, isPascalCase } from "@/lib/utils";
 
-export type MetaScenario = "library" | "erp" | "custom";
+export type MetaScenario = "library" | "erp" | "sap_hcm" | "custom";
 
 export interface MetaCore {
   scenario?: MetaScenario;

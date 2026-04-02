@@ -9,7 +9,17 @@ import {
   ERP_OBJECT_TYPES,
 } from "@/lib/types/ontology-erp-sample";
 import { buildErpOrmMapping } from "@/lib/orm/erp";
-import { buildErpSqlPreview } from "@/lib/semantic/sql";
+import { buildDefaultOrmMapping } from "@/lib/orm/postgres";
+import { buildErpSqlPreview, buildSapHcmSqlPreview } from "@/lib/semantic/sql";
+import {
+  SAP_HCM_ACTION_TYPES,
+  SAP_HCM_AI_MODELS,
+  SAP_HCM_ANALYSIS_INSIGHTS,
+  SAP_HCM_BUSINESS_RULES,
+  SAP_HCM_DATA_FLOWS,
+  SAP_HCM_LINK_TYPES,
+  SAP_HCM_OBJECT_TYPES,
+} from "@/lib/types/ontology-sap-hcm-sample";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -102,6 +112,31 @@ const CASE_EXAMPLES = [
       ],
       output: [
         { propertyId: "poNumber", propertyName: "poNumber", displayName: "PO编号", description: "生成采购订单流水号" },
+      ],
+    },
+  },
+  {
+    caseId: "case-hcm-hire",
+    input: "给员工 E1001 办理入职，分配组织 OU-1000 和岗位 POS-1000",
+    dsl: "ACTION HireEmployee WITH Employee.employeeId=\"E1001\"",
+    graphqlTemplate:
+      "mutation HireEmployee($employeeId: String!, $fullName: String!, $orgUnitId: String!, $positionId: String!, $costCenterId: String!, $payrollAreaId: String!, $personnelAreaId: String!, $employmentType: String!, $hireDate: String!) { hireEmployee(input: { employeeId: $employeeId, fullName: $fullName, orgUnitId: $orgUnitId, positionId: $positionId, costCenterId: $costCenterId, payrollAreaId: $payrollAreaId, personnelAreaId: $personnelAreaId, employmentType: $employmentType, hireDate: $hireDate }) { employeeId status } }",
+    templateVars: { employeeId: "E1001", fullName: "张三", orgUnitId: "OU-1000", positionId: "POS-1000", costCenterId: "CC-1000", payrollAreaId: "PA-01", personnelAreaId: "PE-01", employmentType: "FULL_TIME", hireDate: "2026-04-01T00:00:00Z" },
+    parsedResult: {
+      action: { id: "action-hire-employee", name: "HireEmployee", displayName: "员工入职", layer: "KINETIC" },
+      entities: [
+        { type: "OBJECT_TYPE", id: "employee-hcm", name: "Employee", displayName: "员工", confidence: 0.95, matchedText: "员工" },
+        { type: "OBJECT_TYPE", id: "org-unit-hcm", name: "OrgUnit", displayName: "组织单元", confidence: 0.88, matchedText: "组织" },
+        { type: "OBJECT_TYPE", id: "position-hcm", name: "Position", displayName: "岗位", confidence: 0.88, matchedText: "岗位" },
+      ],
+      suggestedProperties: [
+        { propertyId: "employeeId", propertyName: "employeeId", displayName: "员工编号", value: "E1001", inferred: false, source: "STRING", objectTypeId: "employee-hcm" },
+        { propertyId: "orgUnitId", propertyName: "orgUnitId", displayName: "组织单元ID", value: "OU-1000", inferred: false, source: "STRING", objectTypeId: "employee-hcm" },
+        { propertyId: "positionId", propertyName: "positionId", displayName: "岗位ID", value: "POS-1000", inferred: false, source: "STRING", objectTypeId: "employee-hcm" },
+      ],
+      output: [
+        { propertyId: "employeeId", propertyName: "employeeId", displayName: "员工编号", description: "创建人员主数据并返回编号" },
+        { propertyId: "status", propertyName: "status", displayName: "人员状态", description: "返回 ACTIVE/INACTIVE/TERMINATED" },
       ],
     },
   },
@@ -250,6 +285,28 @@ function fallbackParsedResult(query: string) {
   const isCreatePr = query.includes("采购申请") || query.includes("创建采购申请") || (isErp && query.includes("申请"));
   const isCreatePo = query.includes("采购订单") || query.includes("创建采购订单") || query.includes("提交订单") || (isErp && query.includes("订购"));
   const isReceive = query.includes("收货") || query.includes("入库");
+  const isHcm =
+    !isErp &&
+    (query.includes("入职") ||
+      query.includes("调岗") ||
+      query.includes("调动") ||
+      query.includes("请假") ||
+      query.includes("休假") ||
+      query.includes("工时") ||
+      query.includes("考勤") ||
+      query.includes("加班") ||
+      query.includes("跑薪") ||
+      query.includes("发薪") ||
+      query.includes("薪资") ||
+      query.includes("工资") ||
+      query.includes("员工") ||
+      query.includes("人事"));
+  const isHire = isHcm && (query.includes("入职") || query.includes("办理入职") || query.includes("新增员工"));
+  const isTransfer = isHcm && (query.includes("调岗") || query.includes("调动") || query.includes("转岗") || query.includes("转部门"));
+  const isApproveAbsence = isHcm && query.includes("审批") && (query.includes("请假") || query.includes("休假"));
+  const isRequestAbsence = isHcm && (query.includes("请假") || query.includes("休假")) && !isApproveAbsence;
+  const isRecordTime = isHcm && (query.includes("工时") || query.includes("考勤") || query.includes("加班"));
+  const isRunPayroll = isHcm && (query.includes("跑薪") || query.includes("发薪") || query.includes("薪资计算") || query.includes("工资"));
   const isReturn = query.includes("还");
   const isRenew = query.includes("续借");
   const action =
@@ -259,6 +316,18 @@ function fallbackParsedResult(query: string) {
       ? { id: "action-receive-goods", name: "ReceiveGoods", displayName: "收货过账", layer: "KINETIC" }
       : isErp && isCreatePo
       ? { id: "action-create-po", name: "CreatePO", displayName: "创建采购订单", layer: "KINETIC" }
+      : isHire
+      ? { id: "action-hire-employee", name: "HireEmployee", displayName: "员工入职", layer: "KINETIC" }
+      : isTransfer
+      ? { id: "action-transfer-employee", name: "TransferEmployee", displayName: "员工调岗", layer: "KINETIC" }
+      : isRecordTime
+      ? { id: "action-record-time-entry", name: "RecordTimeEntry", displayName: "记录工时", layer: "KINETIC" }
+      : isRequestAbsence
+      ? { id: "action-request-absence", name: "RequestAbsence", displayName: "发起请假", layer: "KINETIC" }
+      : isApproveAbsence
+      ? { id: "action-approve-absence", name: "ApproveAbsence", displayName: "审批请假", layer: "KINETIC" }
+      : isRunPayroll
+      ? { id: "action-run-payroll", name: "RunPayroll", displayName: "运行薪资计算", layer: "KINETIC" }
       : isReturn
     ? { id: "action-return", name: "ReturnBook", displayName: "还书", layer: "KINETIC" }
     : isRenew
@@ -281,6 +350,33 @@ function fallbackParsedResult(query: string) {
       ? [
           { type: "OBJECT_TYPE", id: "goods-receipt", name: "GoodsReceipt", displayName: "收货单", confidence: 0.9, matchedText: "收货" },
           { type: "OBJECT_TYPE", id: "purchase-order", name: "PurchaseOrder", displayName: "采购订单", confidence: 0.82, matchedText: "PO" }
+        ]
+      : action.id === "action-hire-employee"
+      ? [
+          { type: "OBJECT_TYPE", id: "employee-hcm", name: "Employee", displayName: "员工", confidence: 0.92, matchedText: "员工" },
+          { type: "OBJECT_TYPE", id: "org-unit-hcm", name: "OrgUnit", displayName: "组织单元", confidence: 0.85, matchedText: "组织" },
+          { type: "OBJECT_TYPE", id: "position-hcm", name: "Position", displayName: "岗位", confidence: 0.85, matchedText: "岗位" }
+        ]
+      : action.id === "action-transfer-employee"
+      ? [
+          { type: "OBJECT_TYPE", id: "employee-hcm", name: "Employee", displayName: "员工", confidence: 0.9, matchedText: "员工" },
+          { type: "OBJECT_TYPE", id: "org-unit-hcm", name: "OrgUnit", displayName: "组织单元", confidence: 0.82, matchedText: "组织" },
+          { type: "OBJECT_TYPE", id: "position-hcm", name: "Position", displayName: "岗位", confidence: 0.82, matchedText: "岗位" }
+        ]
+      : action.id === "action-record-time-entry"
+      ? [
+          { type: "OBJECT_TYPE", id: "time-entry-hcm", name: "TimeEntry", displayName: "工时记录", confidence: 0.9, matchedText: "工时" },
+          { type: "OBJECT_TYPE", id: "employee-hcm", name: "Employee", displayName: "员工", confidence: 0.8, matchedText: "员工" }
+        ]
+      : action.id === "action-request-absence" || action.id === "action-approve-absence"
+      ? [
+          { type: "OBJECT_TYPE", id: "absence-request-hcm", name: "AbsenceRequest", displayName: "请假申请", confidence: 0.9, matchedText: "请假" },
+          { type: "OBJECT_TYPE", id: "employee-hcm", name: "Employee", displayName: "员工", confidence: 0.8, matchedText: "员工" }
+        ]
+      : action.id === "action-run-payroll"
+      ? [
+          { type: "OBJECT_TYPE", id: "payroll-run-hcm", name: "PayrollRun", displayName: "跑薪批次", confidence: 0.88, matchedText: "跑薪" },
+          { type: "OBJECT_TYPE", id: "payroll-result-hcm", name: "PayrollResult", displayName: "薪资结果", confidence: 0.82, matchedText: "薪资" }
         ]
       : isReturn
     ? [
@@ -308,6 +404,25 @@ function fallbackParsedResult(query: string) {
     query.match(/物料编码\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] ||
     "MAT-0001";
   const quantity = query.match(/(\d+(?:\.\d+)?)\s*(?:个|件|箱|吨|kg|KG|千克)?/)?.[1] || "10";
+  const employeeId =
+    query.match(/(?:员工|工号)\s*[:：]?\s*([A-Za-z0-9_-]+)/)?.[1] ||
+    query.match(/\bE[0-9]{3,}\b/i)?.[0] ||
+    "E20260001";
+  const orgUnitId =
+    query.match(/(?:组织|部门)\s*(?:ID|编号)?\s*[:：]?\s*(OU[-_A-Za-z0-9]+)/i)?.[1] ||
+    query.match(/\bOU[-_A-Za-z0-9]+\b/i)?.[0] ||
+    "OU-1000";
+  const positionId =
+    query.match(/(?:岗位)\s*(?:ID|编号)?\s*[:：]?\s*(POS[-_A-Za-z0-9]+)/i)?.[1] ||
+    query.match(/\bPOS[-_A-Za-z0-9]+\b/i)?.[0] ||
+    "POS-1000";
+  const requestId =
+    query.match(/(?:请假单|申请单|单号)\s*[:：]?\s*([A-Za-z0-9_-]+)/)?.[1] ||
+    query.match(/\bAR[-_A-Za-z0-9]+\b/i)?.[0] ||
+    "AR-20260001";
+  const hours = query.match(/(\d+(?:\.\d+)?)\s*(?:小时|h|H)/)?.[1] || "8";
+  const absenceType = query.includes("病假") ? "SICK" : query.includes("年假") ? "ANNUAL" : "PERSONAL";
+  const payrollAreaId = query.match(/\bPA[-_A-Za-z0-9]+\b/i)?.[0] || "PA-01";
 
   const suggestedProperties =
     isErp && action.id === "action-create-po"
@@ -325,6 +440,32 @@ function fallbackParsedResult(query: string) {
           { propertyId: "poNumber", propertyName: "poNumber", displayName: "PO编号", value: poNumber, inferred: false, source: "STRING", objectTypeId: "purchase-order" },
           { propertyId: "receivedQuantity", propertyName: "receivedQuantity", displayName: "收货数量", value: quantity, inferred: true, source: "DOUBLE", objectTypeId: "goods-receipt" }
         ]
+      : action.id === "action-hire-employee"
+      ? [
+          { propertyId: "employeeId", propertyName: "employeeId", displayName: "员工编号", value: employeeId, inferred: false, source: "STRING", objectTypeId: "employee-hcm" },
+          { propertyId: "orgUnitId", propertyName: "orgUnitId", displayName: "组织单元ID", value: orgUnitId, inferred: true, source: "STRING", objectTypeId: "employee-hcm" },
+          { propertyId: "positionId", propertyName: "positionId", displayName: "岗位ID", value: positionId, inferred: true, source: "STRING", objectTypeId: "employee-hcm" }
+        ]
+      : action.id === "action-transfer-employee"
+      ? [
+          { propertyId: "employeeId", propertyName: "employeeId", displayName: "员工编号", value: employeeId, inferred: false, source: "STRING", objectTypeId: "employee-hcm" },
+          { propertyId: "orgUnitId", propertyName: "orgUnitId", displayName: "新组织单元ID", value: orgUnitId, inferred: true, source: "STRING", objectTypeId: "employee-hcm" },
+          { propertyId: "positionId", propertyName: "positionId", displayName: "新岗位ID", value: positionId, inferred: true, source: "STRING", objectTypeId: "employee-hcm" }
+        ]
+      : action.id === "action-record-time-entry"
+      ? [
+          { propertyId: "employeeId", propertyName: "employeeId", displayName: "员工编号", value: employeeId, inferred: true, source: "STRING", objectTypeId: "time-entry-hcm" },
+          { propertyId: "hours", propertyName: "hours", displayName: "工时", value: hours, inferred: true, source: "DOUBLE", objectTypeId: "time-entry-hcm" }
+        ]
+      : action.id === "action-request-absence"
+      ? [
+          { propertyId: "employeeId", propertyName: "employeeId", displayName: "员工编号", value: employeeId, inferred: true, source: "STRING", objectTypeId: "absence-request-hcm" },
+          { propertyId: "absenceType", propertyName: "absenceType", displayName: "请假类型", value: absenceType, inferred: true, source: "STRING", objectTypeId: "absence-request-hcm" }
+        ]
+      : action.id === "action-approve-absence"
+      ? [{ propertyId: "requestId", propertyName: "requestId", displayName: "申请单ID", value: requestId, inferred: true, source: "STRING", objectTypeId: "absence-request-hcm" }]
+      : action.id === "action-run-payroll"
+      ? [{ propertyId: "payrollAreaId", propertyName: "payrollAreaId", displayName: "薪资范围ID", value: payrollAreaId, inferred: true, source: "STRING", objectTypeId: "payroll-run-hcm" }]
       : isReturn
     ? [
         { propertyId: "barcode", propertyName: "barcode", displayName: "条码号", value: barcode, inferred: false, source: "STRING", objectTypeId: "holding-001" },
@@ -338,17 +479,60 @@ function fallbackParsedResult(query: string) {
     action,
     entities,
     suggestedProperties,
-    dataFlow: {
-      id: isReturn ? "flow-return" : "flow-checkout",
-      name: isReturn ? "ReturnProcess" : "CheckoutProcess",
-      steps: isReturn
-        ? ["1. 定位馆藏副本", "2. 关联借阅记录", "3. 更新借阅状态", "4. 更新馆藏状态"]
-        : ["1. 识别操作意图", "2. 识别业务实体", "3. 提取关键参数", "4. 生成业务字段"]
-    },
-    businessRules: isReturn
+    dataFlow: isHcm
+      ? {
+          id: "flow-hcm",
+          name: "HcmProcess",
+          steps:
+            action.id === "action-hire-employee"
+              ? ["1. 校验组织/岗位/成本中心", "2. 创建员工主数据", "3. 创建雇佣关系", "4. 同步薪资/考勤范围"]
+              : action.id === "action-transfer-employee"
+              ? ["1. 校验员工存在且在岗", "2. 校验新组织/岗位", "3. 更新任职信息", "4. 记录生效日期"]
+              : action.id === "action-record-time-entry"
+              ? ["1. 校验员工在岗", "2. 校验日期与工时", "3. 写入工时记录", "4. 进入审批或汇总"]
+              : action.id === "action-request-absence"
+              ? ["1. 校验日期范围", "2. 生成请假申请", "3. 进入审批流程", "4. 同步考勤与薪资影响"]
+              : action.id === "action-approve-absence"
+              ? ["1. 校验申请待审批", "2. 写入审批人/时间", "3. 更新审批状态", "4. 回写考勤与薪资影响"]
+              : ["1. 校验期间与范围", "2. 创建跑薪批次", "3. 生成薪资结果", "4. 输出发薪数据"]
+        }
+      : {
+          id: isReturn ? "flow-return" : "flow-checkout",
+          name: isReturn ? "ReturnProcess" : "CheckoutProcess",
+          steps: isReturn
+            ? ["1. 定位馆藏副本", "2. 关联借阅记录", "3. 更新借阅状态", "4. 更新馆藏状态"]
+            : ["1. 识别操作意图", "2. 识别业务实体", "3. 提取关键参数", "4. 生成业务字段"]
+        },
+    businessRules: isHcm
+      ? [{ id: "rule-hcm", name: "HCM 规则校验", status: "WARN", message: "建议对组织/岗位/状态流转做人工确认" }]
+      : isReturn
       ? [{ id: "rule-return-sync", name: "归还状态一致性", status: "PASS", message: "借阅与馆藏状态将同步更新" }]
       : [{ id: "rule-default", name: "业务规则校验", status: "WARN", message: "建议人工确认规则参数" }],
-    output: isReturn
+    output: isHcm
+      ? action.id === "action-hire-employee"
+        ? [
+            { propertyId: "employeeId", propertyName: "employeeId", displayName: "员工编号", description: "创建人员主数据并返回编号" },
+            { propertyId: "status", propertyName: "status", displayName: "人员状态", description: "返回 ACTIVE/INACTIVE/TERMINATED" }
+          ]
+        : action.id === "action-transfer-employee"
+        ? [{ propertyId: "employeeId", propertyName: "employeeId", displayName: "员工编号", description: "返回已更新的员工编号" }]
+        : action.id === "action-record-time-entry"
+        ? [{ propertyId: "timeEntryId", propertyName: "timeEntryId", displayName: "工时记录ID", description: "返回新生成的工时记录ID" }]
+        : action.id === "action-request-absence"
+        ? [
+            { propertyId: "requestId", propertyName: "requestId", displayName: "申请单ID", description: "返回请假申请单号" },
+            { propertyId: "status", propertyName: "status", displayName: "审批状态", description: "返回 PENDING/APPROVED/REJECTED" }
+          ]
+        : action.id === "action-approve-absence"
+        ? [
+            { propertyId: "requestId", propertyName: "requestId", displayName: "申请单ID", description: "返回请假申请单号" },
+            { propertyId: "status", propertyName: "status", displayName: "审批状态", description: "返回 APPROVED/REJECTED" }
+          ]
+        : [
+            { propertyId: "payrollRunId", propertyName: "payrollRunId", displayName: "跑薪批次ID", description: "返回跑薪批次号" },
+            { propertyId: "status", propertyName: "status", displayName: "状态", description: "返回 CREATED/RUNNING/COMPLETED/FAILED" }
+          ]
+      : isReturn
       ? [
           { propertyId: "actualReturnDate", propertyName: "actualReturnDate", displayName: "实际归还时间", description: "系统记录归还时间戳" },
           { propertyId: "holdingStatus", propertyName: "holdingStatus", displayName: "馆藏状态", description: "更新为 AVAILABLE（可借）" }
@@ -361,6 +545,11 @@ function fallbackDsl(query: string, parsedResult: any) {
   const actionId = parsedResult?.action?.id || "";
   const barcode = query.match(/(?:条码号?|barcode)\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1];
   const bookTitle = query.match(/《([^》]+)》/)?.[1];
+  const employeeId =
+    query.match(/(?:员工|工号)\s*[:：]?\s*([A-Za-z0-9_-]+)/)?.[1] || query.match(/\bE[0-9]{3,}\b/i)?.[0] || "E20260001";
+  const orgUnitId = query.match(/\bOU[-_A-Za-z0-9]+\b/i)?.[0] || "OU-1000";
+  const positionId = query.match(/\bPOS[-_A-Za-z0-9]+\b/i)?.[0] || "POS-1000";
+  const requestId = query.match(/\bAR[-_A-Za-z0-9]+\b/i)?.[0] || "AR-20260001";
   if (actionId === "action-return") {
     return `ACTION ReturnBook WITH Holding.barcode="${barcode || "ABC123"}"`;
   }
@@ -370,6 +559,24 @@ function fallbackDsl(query: string, parsedResult: any) {
   if (actionId === "action-query-overdue-fine") {
     return `ACTION QueryOverdueFine WITH Loan.status="OVERDUE"`;
   }
+  if (actionId === "action-hire-employee") {
+    return `ACTION HireEmployee WITH Employee.employeeId="${employeeId}", Employee.orgUnitId="${orgUnitId}", Employee.positionId="${positionId}"`;
+  }
+  if (actionId === "action-transfer-employee") {
+    return `ACTION TransferEmployee WITH Employee.employeeId="${employeeId}", Employee.orgUnitId="${orgUnitId}", Employee.positionId="${positionId}"`;
+  }
+  if (actionId === "action-record-time-entry") {
+    return `ACTION RecordTimeEntry WITH TimeEntry.employeeId="${employeeId}"`;
+  }
+  if (actionId === "action-request-absence") {
+    return `ACTION RequestAbsence WITH AbsenceRequest.employeeId="${employeeId}"`;
+  }
+  if (actionId === "action-approve-absence") {
+    return `ACTION ApproveAbsence WITH AbsenceRequest.requestId="${requestId}"`;
+  }
+  if (actionId === "action-run-payroll") {
+    return `ACTION RunPayroll WITH PayrollRun.payrollAreaId="PA-01"`;
+  }
   return `ACTION CheckoutBook WITH Book.title="${bookTitle || "目标图书"}"`;
 }
 
@@ -378,6 +585,16 @@ function fallbackTemplateVars(query: string, parsedResult: any): Record<string, 
   const barcode = query.match(/(?:条码号?|barcode)\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] || "ABC123";
   const bookTitle = query.match(/《([^》]+)》/)?.[1] || "目标图书";
   const patronName = query.match(/(?:读者|用户|会员)\s*([^\s，,。]+)/)?.[1] || "张三";
+  const employeeId =
+    query.match(/(?:员工|工号)\s*[:：]?\s*([A-Za-z0-9_-]+)/)?.[1] ||
+    query.match(/\bE[0-9]{3,}\b/i)?.[0] ||
+    "E20260001";
+  const orgUnitId = query.match(/\bOU[-_A-Za-z0-9]+\b/i)?.[0] || "OU-1000";
+  const positionId = query.match(/\bPOS[-_A-Za-z0-9]+\b/i)?.[0] || "POS-1000";
+  const costCenterId = query.match(/\bCC[-_A-Za-z0-9]+\b/i)?.[0] || "CC-1000";
+  const requestId = query.match(/\bAR[-_A-Za-z0-9]+\b/i)?.[0] || "AR-20260001";
+  const payrollAreaId = query.match(/\bPA[-_A-Za-z0-9]+\b/i)?.[0] || "PA-01";
+  const hours = query.match(/(\d+(?:\.\d+)?)\s*(?:小时|h|H)/)?.[1] || "8";
   const prNumber =
     query.match(/\bPR\s*([A-Za-z0-9_-]+)\b/i)?.[0]?.replace(/\s+/g, "") ||
     query.match(/PR编号\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] ||
@@ -415,6 +632,39 @@ function fallbackTemplateVars(query: string, parsedResult: any): Record<string, 
   if (actionId === "action-receive-goods") {
     return { poNumber, deliveryNote, receivedQuantity: quantity };
   }
+  if (actionId === "action-hire-employee") {
+    return {
+      employeeId,
+      fullName: "张三",
+      orgUnitId,
+      positionId,
+      costCenterId,
+      payrollAreaId,
+      personnelAreaId: "PE-01",
+      employmentType: "FULL_TIME",
+      hireDate: new Date().toISOString(),
+    };
+  }
+  if (actionId === "action-transfer-employee") {
+    return { employeeId, orgUnitId, positionId, effectiveDate: new Date().toISOString() };
+  }
+  if (actionId === "action-record-time-entry") {
+    return { timeEntryId: "TE-20260001", employeeId, workDate: new Date().toISOString(), hours, timeType: "WORK" };
+  }
+  if (actionId === "action-request-absence") {
+    return { requestId, employeeId, absenceType: "ANNUAL", startDate: new Date().toISOString(), endDate: new Date().toISOString() };
+  }
+  if (actionId === "action-approve-absence") {
+    return { requestId, approverEmployeeId: "E20260002", decision: "APPROVE" };
+  }
+  if (actionId === "action-run-payroll") {
+    return {
+      payrollRunId: "PRUN-20260001",
+      payrollAreaId,
+      periodStart: new Date().toISOString(),
+      periodEnd: new Date().toISOString(),
+    };
+  }
   return { bookTitle, patronName };
 }
 
@@ -439,6 +689,52 @@ function fallbackGraphqlTemplate(parsedResult: any) {
     return `mutation PostGoodsReceipt($poNumber: String!, $deliveryNote: String!, $receivedQuantity: Float!) {
   postGoodsReceipt(input: { poNumber: $poNumber, deliveryNote: $deliveryNote, receivedQuantity: $receivedQuantity }) {
     grNumber
+  }
+}`;
+  }
+  if (actionId === "action-hire-employee") {
+    return `mutation HireEmployee($employeeId: String!, $fullName: String!, $orgUnitId: String!, $positionId: String!, $costCenterId: String!, $payrollAreaId: String!, $personnelAreaId: String!, $employmentType: String!, $hireDate: String!) {
+  hireEmployee(input: { employeeId: $employeeId, fullName: $fullName, orgUnitId: $orgUnitId, positionId: $positionId, costCenterId: $costCenterId, payrollAreaId: $payrollAreaId, personnelAreaId: $personnelAreaId, employmentType: $employmentType, hireDate: $hireDate }) {
+    employeeId
+    status
+  }
+}`;
+  }
+  if (actionId === "action-transfer-employee") {
+    return `mutation TransferEmployee($employeeId: String!, $orgUnitId: String!, $positionId: String!, $effectiveDate: String!) {
+  transferEmployee(input: { employeeId: $employeeId, orgUnitId: $orgUnitId, positionId: $positionId, effectiveDate: $effectiveDate }) {
+    employeeId
+  }
+}`;
+  }
+  if (actionId === "action-record-time-entry") {
+    return `mutation RecordTimeEntry($employeeId: String!, $workDate: String!, $hours: Float!, $timeType: String!) {
+  recordTimeEntry(input: { employeeId: $employeeId, workDate: $workDate, hours: $hours, timeType: $timeType }) {
+    timeEntryId
+  }
+}`;
+  }
+  if (actionId === "action-request-absence") {
+    return `mutation RequestAbsence($employeeId: String!, $absenceType: String!, $startDate: String!, $endDate: String!) {
+  requestAbsence(input: { employeeId: $employeeId, absenceType: $absenceType, startDate: $startDate, endDate: $endDate }) {
+    requestId
+    status
+  }
+}`;
+  }
+  if (actionId === "action-approve-absence") {
+    return `mutation ApproveAbsence($requestId: String!, $approverEmployeeId: String!, $decision: String!) {
+  approveAbsence(input: { requestId: $requestId, approverEmployeeId: $approverEmployeeId, decision: $decision }) {
+    requestId
+    status
+  }
+}`;
+  }
+  if (actionId === "action-run-payroll") {
+    return `mutation RunPayroll($payrollAreaId: String!, $periodStart: String!, $periodEnd: String!) {
+  runPayroll(input: { payrollAreaId: $payrollAreaId, periodStart: $periodStart, periodEnd: $periodEnd }) {
+    payrollRunId
+    status
   }
 }`;
   }
@@ -665,6 +961,37 @@ export async function POST(req: NextRequest) {
         )
       : fallbackTemplateVars(query, parsedResult);
 
+  const isHcmAction =
+    parsedResult?.action?.id === "action-hire-employee" ||
+    parsedResult?.action?.id === "action-transfer-employee" ||
+    parsedResult?.action?.id === "action-record-time-entry" ||
+    parsedResult?.action?.id === "action-request-absence" ||
+    parsedResult?.action?.id === "action-approve-absence" ||
+    parsedResult?.action?.id === "action-run-payroll";
+  const hcmSql = isHcmAction
+    ? (() => {
+        const meta = {
+          scenario: "sap_hcm" as const,
+          objectTypes: SAP_HCM_OBJECT_TYPES,
+          linkTypes: SAP_HCM_LINK_TYPES,
+          actionTypes: SAP_HCM_ACTION_TYPES,
+          dataFlows: SAP_HCM_DATA_FLOWS,
+          businessRules: SAP_HCM_BUSINESS_RULES,
+          aiModels: SAP_HCM_AI_MODELS,
+          analysisInsights: SAP_HCM_ANALYSIS_INSIGHTS,
+        };
+        const mapping = buildDefaultOrmMapping(meta);
+        mapping.databaseName = "sap_hcm";
+        mapping.schemaName = "hcm";
+        return buildSapHcmSqlPreview({
+          meta,
+          mapping,
+          actionTypeId: parsedResult.action.id,
+          templateVars,
+        });
+      })()
+    : null;
+
   const isErpAction =
     parsedResult?.action?.id === "action-create-pr" ||
     parsedResult?.action?.id === "action-create-po" ||
@@ -704,8 +1031,8 @@ export async function POST(req: NextRequest) {
     dsl,
     graphqlTemplate,
     templateVars,
-    sql: erpSql?.sql,
-    sqlVars: erpSql?.vars,
+    sql: hcmSql?.sql ?? erpSql?.sql,
+    sqlVars: hcmSql?.vars ?? erpSql?.vars,
     reasoning,
     parsedResult
   });

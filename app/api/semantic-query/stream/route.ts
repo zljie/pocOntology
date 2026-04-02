@@ -9,7 +9,17 @@ import {
   ERP_OBJECT_TYPES,
 } from "@/lib/types/ontology-erp-sample";
 import { buildErpOrmMapping } from "@/lib/orm/erp";
-import { buildErpSqlPreview } from "@/lib/semantic/sql";
+import { buildDefaultOrmMapping } from "@/lib/orm/postgres";
+import { buildErpSqlPreview, buildSapHcmSqlPreview } from "@/lib/semantic/sql";
+import {
+  SAP_HCM_ACTION_TYPES,
+  SAP_HCM_AI_MODELS,
+  SAP_HCM_ANALYSIS_INSIGHTS,
+  SAP_HCM_BUSINESS_RULES,
+  SAP_HCM_DATA_FLOWS,
+  SAP_HCM_LINK_TYPES,
+  SAP_HCM_OBJECT_TYPES,
+} from "@/lib/types/ontology-sap-hcm-sample";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,6 +72,28 @@ function fallbackParsedResult(query: string) {
   const isCreatePr = query.includes("采购申请") || query.includes("创建采购申请") || (isErp && query.includes("申请"));
   const isCreatePo = query.includes("采购订单") || query.includes("创建采购订单") || query.includes("提交订单") || (isErp && query.includes("订购"));
   const isReceive = query.includes("收货") || query.includes("入库");
+  const isHcm =
+    !isErp &&
+    (query.includes("入职") ||
+      query.includes("调岗") ||
+      query.includes("调动") ||
+      query.includes("请假") ||
+      query.includes("休假") ||
+      query.includes("工时") ||
+      query.includes("考勤") ||
+      query.includes("加班") ||
+      query.includes("跑薪") ||
+      query.includes("发薪") ||
+      query.includes("薪资") ||
+      query.includes("工资") ||
+      query.includes("员工") ||
+      query.includes("人事"));
+  const isHire = isHcm && (query.includes("入职") || query.includes("办理入职") || query.includes("新增员工"));
+  const isTransfer = isHcm && (query.includes("调岗") || query.includes("调动") || query.includes("转岗") || query.includes("转部门"));
+  const isApproveAbsence = isHcm && query.includes("审批") && (query.includes("请假") || query.includes("休假"));
+  const isRequestAbsence = isHcm && (query.includes("请假") || query.includes("休假")) && !isApproveAbsence;
+  const isRecordTime = isHcm && (query.includes("工时") || query.includes("考勤") || query.includes("加班"));
+  const isRunPayroll = isHcm && (query.includes("跑薪") || query.includes("发薪") || query.includes("薪资计算") || query.includes("工资"));
   const isReturn = query.includes("还");
 
   const action =
@@ -71,6 +103,18 @@ function fallbackParsedResult(query: string) {
       ? { id: "action-receive-goods", name: "ReceiveGoods", displayName: "收货过账", layer: "KINETIC" }
       : isErp && isCreatePo
       ? { id: "action-create-po", name: "CreatePO", displayName: "创建采购订单", layer: "KINETIC" }
+      : isHire
+      ? { id: "action-hire-employee", name: "HireEmployee", displayName: "员工入职", layer: "KINETIC" }
+      : isTransfer
+      ? { id: "action-transfer-employee", name: "TransferEmployee", displayName: "员工调岗", layer: "KINETIC" }
+      : isRecordTime
+      ? { id: "action-record-time-entry", name: "RecordTimeEntry", displayName: "记录工时", layer: "KINETIC" }
+      : isRequestAbsence
+      ? { id: "action-request-absence", name: "RequestAbsence", displayName: "发起请假", layer: "KINETIC" }
+      : isApproveAbsence
+      ? { id: "action-approve-absence", name: "ApproveAbsence", displayName: "审批请假", layer: "KINETIC" }
+      : isRunPayroll
+      ? { id: "action-run-payroll", name: "RunPayroll", displayName: "运行薪资计算", layer: "KINETIC" }
       : isReturn
       ? { id: "action-return", name: "ReturnBook", displayName: "还书", layer: "KINETIC" }
       : { id: "action-checkout", name: "CheckoutBook", displayName: "借书", layer: "KINETIC" };
@@ -93,12 +137,35 @@ function fallbackParsedResult(query: string) {
             { type: "OBJECT_TYPE", id: "goods-receipt", name: "GoodsReceipt", displayName: "收货单", confidence: 0.9, matchedText: "收货" },
             { type: "OBJECT_TYPE", id: "purchase-order", name: "PurchaseOrder", displayName: "采购订单", confidence: 0.82, matchedText: "PO" }
           ]
+        : action.id === "action-hire-employee" || action.id === "action-transfer-employee"
+        ? [
+            { type: "OBJECT_TYPE", id: "employee-hcm", name: "Employee", displayName: "员工", confidence: 0.9, matchedText: "员工" },
+            { type: "OBJECT_TYPE", id: "org-unit-hcm", name: "OrgUnit", displayName: "组织单元", confidence: 0.82, matchedText: "组织" },
+            { type: "OBJECT_TYPE", id: "position-hcm", name: "Position", displayName: "岗位", confidence: 0.82, matchedText: "岗位" }
+          ]
+        : action.id === "action-record-time-entry"
+        ? [
+            { type: "OBJECT_TYPE", id: "time-entry-hcm", name: "TimeEntry", displayName: "工时记录", confidence: 0.88, matchedText: "工时" },
+            { type: "OBJECT_TYPE", id: "employee-hcm", name: "Employee", displayName: "员工", confidence: 0.78, matchedText: "员工" }
+          ]
+        : action.id === "action-request-absence" || action.id === "action-approve-absence"
+        ? [
+            { type: "OBJECT_TYPE", id: "absence-request-hcm", name: "AbsenceRequest", displayName: "请假申请", confidence: 0.88, matchedText: "请假" },
+            { type: "OBJECT_TYPE", id: "employee-hcm", name: "Employee", displayName: "员工", confidence: 0.78, matchedText: "员工" }
+          ]
+        : action.id === "action-run-payroll"
+        ? [
+            { type: "OBJECT_TYPE", id: "payroll-run-hcm", name: "PayrollRun", displayName: "跑薪批次", confidence: 0.86, matchedText: "跑薪" },
+            { type: "OBJECT_TYPE", id: "payroll-result-hcm", name: "PayrollResult", displayName: "薪资结果", confidence: 0.78, matchedText: "薪资" }
+          ]
         : isReturn
         ? [{ type: "OBJECT_TYPE", id: "loan-001", name: "Loan", displayName: "借阅记录", confidence: 0.9, matchedText: "还书" }]
         : [{ type: "OBJECT_TYPE", id: "book-001", name: "Book", displayName: "图书", confidence: 0.88, matchedText: "图书" }],
     suggestedProperties: [],
     output: isReturn
       ? [{ propertyId: "actualReturnDate", propertyName: "actualReturnDate", displayName: "实际归还时间", description: "记录归还时间" }]
+      : isHcm
+      ? [{ propertyId: "result", propertyName: "result", displayName: "结果", description: "返回动作执行结果字段" }]
       : [{ propertyId: "loanId", propertyName: "loanId", displayName: "借阅ID", description: "生成借阅记录编号" }],
   };
 }
@@ -121,6 +188,16 @@ function fallbackPreview(query: string) {
     query.match(/物料编码\s*[:：]?\s*([A-Za-z0-9_-]+)/i)?.[1] ||
     "MAT-0001";
   const quantity = query.match(/(\d+(?:\.\d+)?)\s*(?:个|件|箱|吨|kg|KG|千克)?/)?.[1] || "10";
+  const employeeId =
+    query.match(/(?:员工|工号)\s*[:：]?\s*([A-Za-z0-9_-]+)/)?.[1] ||
+    query.match(/\bE[0-9]{3,}\b/i)?.[0] ||
+    "E20260001";
+  const orgUnitId = query.match(/\bOU[-_A-Za-z0-9]+\b/i)?.[0] || "OU-1000";
+  const positionId = query.match(/\bPOS[-_A-Za-z0-9]+\b/i)?.[0] || "POS-1000";
+  const costCenterId = query.match(/\bCC[-_A-Za-z0-9]+\b/i)?.[0] || "CC-1000";
+  const requestId = query.match(/\bAR[-_A-Za-z0-9]+\b/i)?.[0] || "AR-20260001";
+  const payrollAreaId = query.match(/\bPA[-_A-Za-z0-9]+\b/i)?.[0] || "PA-01";
+  const hours = query.match(/(\d+(?:\.\d+)?)\s*(?:小时|h|H)/)?.[1] || "8";
 
   const isErp =
     query.includes("采购") ||
@@ -133,6 +210,28 @@ function fallbackPreview(query: string) {
   const isCreatePr = query.includes("采购申请") || query.includes("创建采购申请") || (isErp && query.includes("申请"));
   const isCreatePo = query.includes("采购订单") || query.includes("创建采购订单") || query.includes("提交订单") || (isErp && query.includes("订购"));
   const isReceive = query.includes("收货") || query.includes("入库");
+  const isHcm =
+    !isErp &&
+    (query.includes("入职") ||
+      query.includes("调岗") ||
+      query.includes("调动") ||
+      query.includes("请假") ||
+      query.includes("休假") ||
+      query.includes("工时") ||
+      query.includes("考勤") ||
+      query.includes("加班") ||
+      query.includes("跑薪") ||
+      query.includes("发薪") ||
+      query.includes("薪资") ||
+      query.includes("工资") ||
+      query.includes("员工") ||
+      query.includes("人事"));
+  const isHire = isHcm && (query.includes("入职") || query.includes("办理入职") || query.includes("新增员工"));
+  const isTransfer = isHcm && (query.includes("调岗") || query.includes("调动") || query.includes("转岗") || query.includes("转部门"));
+  const isApproveAbsence = isHcm && query.includes("审批") && (query.includes("请假") || query.includes("休假"));
+  const isRequestAbsence = isHcm && (query.includes("请假") || query.includes("休假")) && !isApproveAbsence;
+  const isRecordTime = isHcm && (query.includes("工时") || query.includes("考勤") || query.includes("加班"));
+  const isRunPayroll = isHcm && (query.includes("跑薪") || query.includes("发薪") || query.includes("薪资计算") || query.includes("工资"));
 
   if (isErp && isCreatePr) {
     const templateVars = { materialCode, quantity, requiredDate: new Date().toISOString() };
@@ -248,6 +347,196 @@ function fallbackPreview(query: string) {
       dsl: `ACTION ReceiveGoods WITH GoodsReceipt.poNumber=\"${poNumber}\", receivedQuantity=${quantity}`,
       graphqlTemplate:
         `mutation PostGoodsReceipt($poNumber: String!, $deliveryNote: String!, $receivedQuantity: Float!) {\n  postGoodsReceipt(input: { poNumber: $poNumber, deliveryNote: $deliveryNote, receivedQuantity: $receivedQuantity }) {\n    grNumber\n  }\n}`,
+      templateVars,
+      sql: sql.sql,
+      sqlVars: sql.vars,
+    };
+  }
+
+  if (isHire) {
+    const templateVars = {
+      employeeId,
+      fullName: "张三",
+      orgUnitId,
+      positionId,
+      costCenterId,
+      payrollAreaId,
+      personnelAreaId: "PE-01",
+      employmentType: "FULL_TIME",
+      hireDate: new Date().toISOString(),
+    };
+    const meta = {
+      scenario: "sap_hcm" as const,
+      objectTypes: SAP_HCM_OBJECT_TYPES,
+      linkTypes: SAP_HCM_LINK_TYPES,
+      actionTypes: SAP_HCM_ACTION_TYPES,
+      dataFlows: SAP_HCM_DATA_FLOWS,
+      businessRules: SAP_HCM_BUSINESS_RULES,
+      aiModels: SAP_HCM_AI_MODELS,
+      analysisInsights: SAP_HCM_ANALYSIS_INSIGHTS,
+    };
+    const mapping = buildDefaultOrmMapping(meta);
+    mapping.databaseName = "sap_hcm";
+    mapping.schemaName = "hcm";
+    const sql = buildSapHcmSqlPreview({ meta, mapping, actionTypeId: "action-hire-employee", templateVars });
+    return {
+      semanticScenario: "系统将入职语义转义为人员主数据创建，并映射为接口调用与数据库写入计划。",
+      rdf: `lib:HCM_Action_HireEmployee a lib:Action .`,
+      owl: `Class: lib:HCMAction\n  Annotations: rdfs:label \"HCM 人事动作\"`,
+      swrl: `lib:Rule_Employee_Assignment a lib:BusinessRule ;\n  lib:then \"\"\" true \"\"\" .`,
+      dsl: `ACTION HireEmployee WITH Employee.employeeId=\"${employeeId}\", Employee.orgUnitId=\"${orgUnitId}\", Employee.positionId=\"${positionId}\"`,
+      graphqlTemplate:
+        `mutation HireEmployee($employeeId: String!, $fullName: String!, $orgUnitId: String!, $positionId: String!, $costCenterId: String!, $payrollAreaId: String!, $personnelAreaId: String!, $employmentType: String!, $hireDate: String!) {\n  hireEmployee(input: { employeeId: $employeeId, fullName: $fullName, orgUnitId: $orgUnitId, positionId: $positionId, costCenterId: $costCenterId, payrollAreaId: $payrollAreaId, personnelAreaId: $personnelAreaId, employmentType: $employmentType, hireDate: $hireDate }) {\n    employeeId\n    status\n  }\n}`,
+      templateVars,
+      sql: sql.sql,
+      sqlVars: sql.vars,
+    };
+  }
+
+  if (isTransfer) {
+    const templateVars = { employeeId, orgUnitId, positionId, effectiveDate: new Date().toISOString() };
+    const meta = {
+      scenario: "sap_hcm" as const,
+      objectTypes: SAP_HCM_OBJECT_TYPES,
+      linkTypes: SAP_HCM_LINK_TYPES,
+      actionTypes: SAP_HCM_ACTION_TYPES,
+      dataFlows: SAP_HCM_DATA_FLOWS,
+      businessRules: SAP_HCM_BUSINESS_RULES,
+      aiModels: SAP_HCM_AI_MODELS,
+      analysisInsights: SAP_HCM_ANALYSIS_INSIGHTS,
+    };
+    const mapping = buildDefaultOrmMapping(meta);
+    mapping.databaseName = "sap_hcm";
+    mapping.schemaName = "hcm";
+    const sql = buildSapHcmSqlPreview({ meta, mapping, actionTypeId: "action-transfer-employee", templateVars });
+    return {
+      semanticScenario: "系统将调岗语义转义为人员任职信息更新，并映射为接口调用与数据库写入计划。",
+      rdf: `lib:HCM_Action_TransferEmployee a lib:Action .`,
+      owl: `Class: lib:HCMAction\n  Annotations: rdfs:label \"HCM 人事动作\"`,
+      swrl: `lib:Rule_Transfer_Validation a lib:BusinessRule ;\n  lib:then \"\"\" true \"\"\" .`,
+      dsl: `ACTION TransferEmployee WITH Employee.employeeId=\"${employeeId}\", Employee.orgUnitId=\"${orgUnitId}\", Employee.positionId=\"${positionId}\"`,
+      graphqlTemplate:
+        `mutation TransferEmployee($employeeId: String!, $orgUnitId: String!, $positionId: String!, $effectiveDate: String!) {\n  transferEmployee(input: { employeeId: $employeeId, orgUnitId: $orgUnitId, positionId: $positionId, effectiveDate: $effectiveDate }) {\n    employeeId\n  }\n}`,
+      templateVars,
+      sql: sql.sql,
+      sqlVars: sql.vars,
+    };
+  }
+
+  if (isRecordTime) {
+    const templateVars = { timeEntryId: "TE-20260001", employeeId, workDate: new Date().toISOString(), hours, timeType: "WORK" };
+    const meta = {
+      scenario: "sap_hcm" as const,
+      objectTypes: SAP_HCM_OBJECT_TYPES,
+      linkTypes: SAP_HCM_LINK_TYPES,
+      actionTypes: SAP_HCM_ACTION_TYPES,
+      dataFlows: SAP_HCM_DATA_FLOWS,
+      businessRules: SAP_HCM_BUSINESS_RULES,
+      aiModels: SAP_HCM_AI_MODELS,
+      analysisInsights: SAP_HCM_ANALYSIS_INSIGHTS,
+    };
+    const mapping = buildDefaultOrmMapping(meta);
+    mapping.databaseName = "sap_hcm";
+    mapping.schemaName = "hcm";
+    const sql = buildSapHcmSqlPreview({ meta, mapping, actionTypeId: "action-record-time-entry", templateVars });
+    return {
+      semanticScenario: "系统将工时语义转义为工时记录写入，并映射为接口调用与数据库写入计划。",
+      rdf: `lib:HCM_Action_RecordTimeEntry a lib:Action .`,
+      owl: `Class: lib:HCMAction\n  Annotations: rdfs:label \"HCM 人事动作\"`,
+      swrl: `lib:Rule_TimeEntry_Validation a lib:BusinessRule ;\n  lib:then \"\"\" true \"\"\" .`,
+      dsl: `ACTION RecordTimeEntry WITH TimeEntry.employeeId=\"${employeeId}\", hours=${hours}`,
+      graphqlTemplate:
+        `mutation RecordTimeEntry($employeeId: String!, $workDate: String!, $hours: Float!, $timeType: String!) {\n  recordTimeEntry(input: { employeeId: $employeeId, workDate: $workDate, hours: $hours, timeType: $timeType }) {\n    timeEntryId\n  }\n}`,
+      templateVars,
+      sql: sql.sql,
+      sqlVars: sql.vars,
+    };
+  }
+
+  if (isRequestAbsence) {
+    const templateVars = { requestId, employeeId, absenceType: "ANNUAL", startDate: new Date().toISOString(), endDate: new Date().toISOString(), status: "PENDING" };
+    const meta = {
+      scenario: "sap_hcm" as const,
+      objectTypes: SAP_HCM_OBJECT_TYPES,
+      linkTypes: SAP_HCM_LINK_TYPES,
+      actionTypes: SAP_HCM_ACTION_TYPES,
+      dataFlows: SAP_HCM_DATA_FLOWS,
+      businessRules: SAP_HCM_BUSINESS_RULES,
+      aiModels: SAP_HCM_AI_MODELS,
+      analysisInsights: SAP_HCM_ANALYSIS_INSIGHTS,
+    };
+    const mapping = buildDefaultOrmMapping(meta);
+    mapping.databaseName = "sap_hcm";
+    mapping.schemaName = "hcm";
+    const sql = buildSapHcmSqlPreview({ meta, mapping, actionTypeId: "action-request-absence", templateVars });
+    return {
+      semanticScenario: "系统将请假语义转义为请假申请创建，并映射为接口调用与数据库写入计划。",
+      rdf: `lib:HCM_Action_RequestAbsence a lib:Action .`,
+      owl: `Class: lib:HCMAction\n  Annotations: rdfs:label \"HCM 人事动作\"`,
+      swrl: `lib:Rule_Absence_DateRange a lib:BusinessRule ;\n  lib:then \"\"\" true \"\"\" .`,
+      dsl: `ACTION RequestAbsence WITH AbsenceRequest.employeeId=\"${employeeId}\"`,
+      graphqlTemplate:
+        `mutation RequestAbsence($employeeId: String!, $absenceType: String!, $startDate: String!, $endDate: String!) {\n  requestAbsence(input: { employeeId: $employeeId, absenceType: $absenceType, startDate: $startDate, endDate: $endDate }) {\n    requestId\n    status\n  }\n}`,
+      templateVars,
+      sql: sql.sql,
+      sqlVars: sql.vars,
+    };
+  }
+
+  if (isApproveAbsence) {
+    const templateVars = { requestId, approverEmployeeId: "E20260002", decision: "APPROVE" };
+    const meta = {
+      scenario: "sap_hcm" as const,
+      objectTypes: SAP_HCM_OBJECT_TYPES,
+      linkTypes: SAP_HCM_LINK_TYPES,
+      actionTypes: SAP_HCM_ACTION_TYPES,
+      dataFlows: SAP_HCM_DATA_FLOWS,
+      businessRules: SAP_HCM_BUSINESS_RULES,
+      aiModels: SAP_HCM_AI_MODELS,
+      analysisInsights: SAP_HCM_ANALYSIS_INSIGHTS,
+    };
+    const mapping = buildDefaultOrmMapping(meta);
+    mapping.databaseName = "sap_hcm";
+    mapping.schemaName = "hcm";
+    const sql = buildSapHcmSqlPreview({ meta, mapping, actionTypeId: "action-approve-absence", templateVars });
+    return {
+      semanticScenario: "系统将请假审批语义转义为审批状态更新，并映射为接口调用与数据库写入计划。",
+      rdf: `lib:HCM_Action_ApproveAbsence a lib:Action .`,
+      owl: `Class: lib:HCMAction\n  Annotations: rdfs:label \"HCM 人事动作\"`,
+      swrl: `lib:Rule_Absence_Transition a lib:BusinessRule ;\n  lib:then \"\"\" true \"\"\" .`,
+      dsl: `ACTION ApproveAbsence WITH AbsenceRequest.requestId=\"${requestId}\"`,
+      graphqlTemplate:
+        `mutation ApproveAbsence($requestId: String!, $approverEmployeeId: String!, $decision: String!) {\n  approveAbsence(input: { requestId: $requestId, approverEmployeeId: $approverEmployeeId, decision: $decision }) {\n    requestId\n    status\n  }\n}`,
+      templateVars,
+      sql: sql.sql,
+      sqlVars: sql.vars,
+    };
+  }
+
+  if (isRunPayroll) {
+    const templateVars = { payrollRunId: "PRUN-20260001", payrollAreaId, periodStart: new Date().toISOString(), periodEnd: new Date().toISOString(), status: "CREATED" };
+    const meta = {
+      scenario: "sap_hcm" as const,
+      objectTypes: SAP_HCM_OBJECT_TYPES,
+      linkTypes: SAP_HCM_LINK_TYPES,
+      actionTypes: SAP_HCM_ACTION_TYPES,
+      dataFlows: SAP_HCM_DATA_FLOWS,
+      businessRules: SAP_HCM_BUSINESS_RULES,
+      aiModels: SAP_HCM_AI_MODELS,
+      analysisInsights: SAP_HCM_ANALYSIS_INSIGHTS,
+    };
+    const mapping = buildDefaultOrmMapping(meta);
+    mapping.databaseName = "sap_hcm";
+    mapping.schemaName = "hcm";
+    const sql = buildSapHcmSqlPreview({ meta, mapping, actionTypeId: "action-run-payroll", templateVars });
+    return {
+      semanticScenario: "系统将跑薪语义转义为跑薪批次创建，并映射为接口调用与数据库写入计划。",
+      rdf: `lib:HCM_Action_RunPayroll a lib:Action .`,
+      owl: `Class: lib:HCMAction\n  Annotations: rdfs:label \"HCM 人事动作\"`,
+      swrl: `lib:Rule_Payroll_Run a lib:BusinessRule ;\n  lib:then \"\"\" true \"\"\" .`,
+      dsl: `ACTION RunPayroll WITH PayrollRun.payrollAreaId=\"${payrollAreaId}\"`,
+      graphqlTemplate:
+        `mutation RunPayroll($payrollAreaId: String!, $periodStart: String!, $periodEnd: String!) {\n  runPayroll(input: { payrollAreaId: $payrollAreaId, periodStart: $periodStart, periodEnd: $periodEnd }) {\n    payrollRunId\n    status\n  }\n}`,
       templateVars,
       sql: sql.sql,
       sqlVars: sql.vars,
