@@ -12,25 +12,34 @@ import { RightSemanticQueryPanel } from "@/components/semantic-query/right-seman
 import { ImportDialog } from "@/components/proposal-system/import-dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useUIStore } from "@/stores";
+import { BusinessDomainPlannerPanel } from "@/components/consulting/business-domain-planner-panel";
+import { ConsultingRightPanel } from "@/components/consulting/consulting-right-panel";
 
 export default function HomePage() {
-  const { showImportDialog, setShowImportDialog } = useUIStore();
+  const { showImportDialog, setShowImportDialog, workMode, openRightPanel } = useUIStore();
+
+  React.useEffect(() => {
+    if (workMode === "CONSULTING") {
+      openRightPanel();
+    }
+  }, [workMode, openRightPanel]);
 
   return (
     <TooltipProvider>
       <div className="flex flex-col h-screen">
         <Header />
         <ThreePanelLayout
-          leftPanel={<OntologyLayerPanel />}
+          leftPanel={workMode === "CONSULTING" ? <BusinessDomainPlannerPanel /> : <OntologyLayerPanel />}
           centerPanel={<OntologyCanvas />}
-          rightPanel={
+          showBottomPreview={workMode !== "CONSULTING"}
+          rightPanel={workMode === "CONSULTING" ? <ConsultingRightPanel /> : (
             <>
               <PropertyEditorPanel />
               <KineticEditorPanel />
               <DynamicEditorPanel />
               <RightSemanticQueryPanel />
             </>
-          }
+          )}
         />
         <ImportDialog
           open={showImportDialog}

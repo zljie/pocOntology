@@ -73,7 +73,13 @@ export function OntologyCanvas() {
     selectLinkType,
     clearAll,
   } = useSelectionStore();
-  const { showMinimap, showGrid, canvasViewMode, openRightPanel } = useUIStore();
+  const { showMinimap, showGrid, canvasViewMode, openRightPanel, workMode, setCanvasViewMode } = useUIStore();
+
+  React.useEffect(() => {
+    if (workMode !== "CONSULTING") return;
+    if (canvasViewMode === "KNOWLEDGE_GRAPH") return;
+    setCanvasViewMode("KNOWLEDGE_GRAPH");
+  }, [workMode, canvasViewMode, setCanvasViewMode]);
 
   // Convert object types to nodes
   const initialNodes: Node[] = useMemo(() => {
@@ -124,16 +130,15 @@ export function OntologyCanvas() {
 
   // Sync with store data
   React.useEffect(() => {
-    const positions: Record<string, { x: number; y: number }> = {};
-    
-    // Preserve existing positions
-    nodes.forEach((node) => {
-      positions[node.id] = node.position;
-    });
-    
-    // Add new nodes with positions
-    objectTypes.forEach((ot) => {
-      if (!positions[ot.id]) {
+    setNodes((prev) => {
+      const positions: Record<string, { x: number; y: number }> = {};
+
+      for (const node of prev) {
+        positions[node.id] = node.position;
+      }
+
+      for (const ot of objectTypes) {
+        if (positions[ot.id]) continue;
         const cols = Math.ceil(Math.sqrt(objectTypes.length));
         const index = objectTypes.indexOf(ot);
         const col = index % cols;
@@ -143,19 +148,18 @@ export function OntologyCanvas() {
           y: row * 240 + 100,
         };
       }
-    });
 
-    const newNodes: Node[] = objectTypes.map((ot) => ({
-      id: ot.id,
-      type: "objectType",
-      position: positions[ot.id],
-      data: {
-        objectType: ot,
-        selected: selectedNodeId === ot.id,
-        highlighted: semanticHighlightedNodeIds.includes(ot.id),
-      },
-    }));
-    setNodes(newNodes);
+      return objectTypes.map((ot) => ({
+        id: ot.id,
+        type: "objectType",
+        position: positions[ot.id],
+        data: {
+          objectType: ot,
+          selected: selectedNodeId === ot.id,
+          highlighted: semanticHighlightedNodeIds.includes(ot.id),
+        },
+      }));
+    });
   }, [objectTypes, selectedNodeId, semanticHighlightedNodeIds, setNodes]);
 
   React.useEffect(() => {

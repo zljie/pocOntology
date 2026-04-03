@@ -9,12 +9,14 @@ interface ThreePanelLayoutProps {
   leftPanel: React.ReactNode;
   centerPanel: React.ReactNode;
   rightPanel: React.ReactNode;
+  showBottomPreview?: boolean;
 }
 
 export function ThreePanelLayout({
   leftPanel,
   centerPanel,
   rightPanel,
+  showBottomPreview = true,
 }: ThreePanelLayoutProps) {
   const {
     leftPanelOpen,
@@ -89,7 +91,7 @@ export function ThreePanelLayout({
         <div className="flex-1 min-h-0">
           {centerPanel}
         </div>
-        <SemanticQueryPreviewPanel />
+        {showBottomPreview && <SemanticQueryPreviewPanel />}
       </div>
 
       {/* Right Resize Handle & Panel */}

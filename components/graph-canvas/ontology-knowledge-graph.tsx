@@ -68,6 +68,7 @@ export function OntologyKnowledgeGraph() {
   const linkLineSelectionRef = useRef<d3.Selection<SVGLineElement, D3Edge, SVGGElement, unknown> | null>(null);
   const linkTextSelectionRef = useRef<d3.Selection<SVGTextElement, D3Edge, SVGGElement, unknown> | null>(null);
   const radiusByNodeIdRef = useRef<Record<string, number>>({});
+  const sizeRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
   const positionsRef = useRef<
     Map<
       string,
@@ -168,6 +169,7 @@ export function OntologyKnowledgeGraph() {
     const positions = positionsRef.current;
     const width = containerRef.current.clientWidth;
     const height = containerRef.current.clientHeight;
+    sizeRef.current = { width, height };
 
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove(); // 清除旧内容
@@ -233,11 +235,26 @@ export function OntologyKnowledgeGraph() {
     // 创建仿真
     const simulation = d3.forceSimulation<D3Node, D3Edge>(seededNodes)
       .force("link", d3.forceLink<D3Node, D3Edge>(edges).id((d) => d.id).distance(200))
-      .force("charge", d3.forceManyBody().strength(-800))
+      .force("charge", d3.forceManyBody().strength(-620))
       .force("center", d3.forceCenter(width / 2, height / 2))
+      .force("x", d3.forceX(width / 2).strength(0.06))
+      .force("y", d3.forceY(height / 2).strength(0.06))
       .force("collide", d3.forceCollide().radius((d) => (d as D3Node).radius + 20));
+    simulation.velocityDecay(0.6);
 
     simulationRef.current = simulation;
+
+    const ro = new ResizeObserver(() => {
+      if (!containerRef.current || !simulationRef.current) return;
+      const w = containerRef.current.clientWidth;
+      const h = containerRef.current.clientHeight;
+      sizeRef.current = { width: w, height: h };
+      simulationRef.current.force("center", d3.forceCenter(w / 2, h / 2));
+      simulationRef.current.force("x", d3.forceX(w / 2).strength(0.06));
+      simulationRef.current.force("y", d3.forceY(h / 2).strength(0.06));
+      simulationRef.current.alpha(0.06).restart();
+    });
+    ro.observe(containerRef.current);
 
     // 渲染边
     const link = linkGroup
@@ -324,6 +341,15 @@ export function OntologyKnowledgeGraph() {
 
     // 仿真每一步更新位置
     simulation.on("tick", () => {
+      const { width: w, height: h } = sizeRef.current;
+      if (w > 120 && h > 120) {
+        for (const n of seededNodes) {
+          const r = (radiusByNodeIdRef.current[n.id] ?? 35) + 10;
+          if (typeof n.x === "number") n.x = Math.max(r, Math.min(w - r, n.x));
+          if (typeof n.y === "number") n.y = Math.max(r, Math.min(h - r, n.y));
+        }
+      }
+
       linkPath
         .attr("x1", (d: any) => {
           const sx = d.source.x ?? 0;
@@ -416,6 +442,7 @@ export function OntologyKnowledgeGraph() {
     linkTextSelectionRef.current = linkText as any;
 
     return () => {
+      ro.disconnect();
       const current = simulationRef.current?.nodes?.() || [];
       for (const n of current) {
         positions.set(n.id, { x: n.x, y: n.y, vx: n.vx, vy: n.vy });
@@ -513,7 +540,7 @@ export function OntologyKnowledgeGraph() {
     const simulation = simulationRef.current;
     if (!simulation) return;
     simulation.force("collide", d3.forceCollide<D3Node>().radius((d) => (radiusByNodeId[d.id] ?? 35) + 20));
-    simulation.alpha(0.15).restart();
+    simulation.alpha(0.08).restart();
   }, [radiusByNodeId]);
 
   return (

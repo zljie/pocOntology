@@ -14,6 +14,8 @@ import {
   Boxes,
   FilePlus,
   Users,
+  MessageSquare,
+  PenTool,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -65,7 +67,7 @@ export function Header() {
   } = useOntologyStore();
   const { clearAll: clearSelection } = useSelectionStore();
   const { clearAll: clearProposals } = useProposalStore();
-  const { setShowImportDialog, showProposalBanner } = useUIStore();
+  const { setShowImportDialog, showProposalBanner, workMode, setWorkMode, setCanvasViewMode, openRightPanel } = useUIStore();
   const [showSemanticQuery, setShowSemanticQuery] = useState(false);
   const [showScenarioSandbox, setShowScenarioSandbox] = useState(false);
   const [showOrmTest, setShowOrmTest] = useState(false);
@@ -215,6 +217,39 @@ export function Header() {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-md border border-[#3d3d3d] overflow-hidden mr-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`rounded-none text-xs ${
+                workMode === "ONTOLOGY_DESIGN"
+                  ? "bg-[#2d2d2d] text-white"
+                  : "text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
+              }`}
+              onClick={() => setWorkMode("ONTOLOGY_DESIGN")}
+            >
+              <PenTool className="w-3.5 h-3.5 mr-1" />
+              本体设计模式
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`rounded-none text-xs ${
+                workMode === "CONSULTING"
+                  ? "bg-[#2d2d2d] text-white"
+                  : "text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
+              }`}
+              onClick={() => {
+                setWorkMode("CONSULTING");
+                setCanvasViewMode("KNOWLEDGE_GRAPH");
+                openRightPanel();
+              }}
+            >
+              <MessageSquare className="w-3.5 h-3.5 mr-1" />
+              咨询模式
+            </Button>
+          </div>
+
           <Button
             variant="default"
             size="sm"
