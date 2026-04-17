@@ -10,6 +10,7 @@ interface UIStore {
   showGrid: boolean;
   canvasViewMode: 'EDITOR' | 'KNOWLEDGE_GRAPH';
   workMode: 'ONTOLOGY_DESIGN' | 'CONSULTING';
+  projectOnboardingMode: boolean;
   showProposalBanner: boolean;
   showImportDialog: boolean;
   activeTab: string;
@@ -24,6 +25,8 @@ interface UIStore {
   toggleCanvasViewMode: () => void;
   setCanvasViewMode: (mode: 'EDITOR' | 'KNOWLEDGE_GRAPH') => void;
   setWorkMode: (mode: 'ONTOLOGY_DESIGN' | 'CONSULTING') => void;
+  enterProjectOnboarding: () => void;
+  exitProjectOnboarding: () => void;
   toggleProposalBanner: () => void;
   setShowImportDialog: (show: boolean) => void;
   setActiveTab: (tab: string) => void;
@@ -42,6 +45,7 @@ export const useUIStore = create<UIStore>()(
       showGrid: true,
       canvasViewMode: 'EDITOR',
       workMode: 'ONTOLOGY_DESIGN',
+      projectOnboardingMode: false,
       showProposalBanner: true,
       showImportDialog: false,
       activeTab: 'general',
@@ -75,6 +79,12 @@ export const useUIStore = create<UIStore>()(
       setWorkMode: (mode) =>
         set({ workMode: mode }),
 
+      enterProjectOnboarding: () =>
+        set({ projectOnboardingMode: true, workMode: "ONTOLOGY_DESIGN", canvasViewMode: "EDITOR" }),
+
+      exitProjectOnboarding: () =>
+        set({ projectOnboardingMode: false }),
+
       toggleProposalBanner: () =>
         set((state) => ({ showProposalBanner: !state.showProposalBanner })),
 
@@ -100,6 +110,7 @@ export const useUIStore = create<UIStore>()(
         showGrid: state.showGrid,
         canvasViewMode: state.canvasViewMode,
         workMode: state.workMode,
+        projectOnboardingMode: state.projectOnboardingMode,
       }),
     }
   )

@@ -37,13 +37,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useOntologyStore, useSelectionStore, useProposalStore } from "@/stores";
+import { useOntologyStore, useSelectionStore, useProposalStore, useOnboardingStore } from "@/stores";
 import { useUIStore } from "@/stores";
 import { SemanticQueryInput } from "@/components/semantic-query/semantic-query-input";
 import { BusinessScenarioSandbox } from "@/components/scenario-sandbox/business-scenario-sandbox";
 import { OrmTestPanel } from "@/components/orm-test/orm-test-panel";
 import { MetaToolboxSheet } from "@/components/meta/meta-toolbox-sheet";
-import { createNeo4jDatabaseClient, upsertMetaToNeo4jClient } from "@/lib/neo4j/client";
+import { createNeo4jDatabaseClient, saveProjectOnboardingStateClient, upsertMetaToNeo4jClient } from "@/lib/neo4j/client";
 import type { MetaCore } from "@/lib/meta/meta-core";
 
 function isValidNeo4jDbName(name: string) {
@@ -67,7 +67,8 @@ export function Header() {
   } = useOntologyStore();
   const { clearAll: clearSelection } = useSelectionStore();
   const { clearAll: clearProposals } = useProposalStore();
-  const { setShowImportDialog, showProposalBanner, workMode, setWorkMode, setCanvasViewMode, openRightPanel } = useUIStore();
+  const { setShowImportDialog, showProposalBanner, workMode, setWorkMode, setCanvasViewMode, openRightPanel, enterProjectOnboarding } = useUIStore();
+  const { initProjectOnboarding } = useOnboardingStore();
   const [showSemanticQuery, setShowSemanticQuery] = useState(false);
   const [showScenarioSandbox, setShowScenarioSandbox] = useState(false);
   const [showOrmTest, setShowOrmTest] = useState(false);
@@ -115,6 +116,10 @@ export function Header() {
       clearSelection();
       clearProposals();
       setNeo4jProject({ dbName, displayName });
+      const onboarding = initProjectOnboarding(dbName);
+      enterProjectOnboarding();
+      openRightPanel();
+      saveProjectOnboardingStateClient({ database: dbName, state: onboarding }).catch(() => {});
       setShowNewCanvasDialog(false);
     } catch (e: any) {
       setNewCanvasError(e?.message || "创建 Neo4j 数据库失败");

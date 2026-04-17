@@ -9,6 +9,7 @@ import { PropertyEditorPanel } from "@/components/property-editor/property-edito
 import { KineticEditorPanel } from "@/components/property-editor/kinetic-editor-panel";
 import { DynamicEditorPanel } from "@/components/property-editor/dynamic-editor-panel";
 import { RightSemanticQueryPanel } from "@/components/semantic-query/right-semantic-query-panel";
+import { ProjectOnboardingRightPanel } from "@/components/project-onboarding/project-onboarding-right-panel";
 import { ImportDialog } from "@/components/proposal-system/import-dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useUIStore } from "@/stores";
@@ -34,6 +35,7 @@ export default function HomePage() {
           showBottomPreview={workMode !== "CONSULTING"}
           rightPanel={workMode === "CONSULTING" ? <ConsultingRightPanel /> : (
             <>
+              <ProjectOnboardingRightPanel />
               <PropertyEditorPanel />
               <KineticEditorPanel />
               <DynamicEditorPanel />

@@ -31,6 +31,7 @@ import { ObjectType, LinkType } from "@/lib/types/ontology";
 import { generateId } from "@/lib/utils";
 
 import { OntologyKnowledgeGraph } from "./ontology-knowledge-graph";
+import { ProjectOnboardingCanvas } from "@/components/project-onboarding/project-onboarding-canvas";
 
 const nodeTypes: NodeTypes = {
   objectType: ObjectTypeNode,
@@ -61,18 +62,10 @@ function generateLayout(objectTypes: ObjectType[]): Record<string, { x: number; 
   return positions;
 }
 
-export function OntologyCanvas() {
-  const { objectTypes, linkTypes, addLinkType, addObjectType, neo4jProject, scenario } =
-    useOntologyStore();
-  const {
-    selectedNodeId,
-    semanticHighlightedNodeIds,
-    selectNode,
-    selectEdge,
-    selectObjectType,
-    selectLinkType,
-    clearAll,
-  } = useSelectionStore();
+function OntologyCanvasMain() {
+  const { objectTypes, linkTypes, addLinkType, addObjectType, neo4jProject, scenario } = useOntologyStore();
+  const { selectedNodeId, semanticHighlightedNodeIds, selectNode, selectEdge, selectObjectType, selectLinkType, clearAll } =
+    useSelectionStore();
   const { showMinimap, showGrid, canvasViewMode, openRightPanel, workMode, setCanvasViewMode } = useUIStore();
 
   React.useEffect(() => {
@@ -348,4 +341,10 @@ export function OntologyCanvas() {
       )}
     </div>
   );
+}
+
+export function OntologyCanvas() {
+  const { projectOnboardingMode } = useUIStore();
+  if (projectOnboardingMode) return <ProjectOnboardingCanvas />;
+  return <OntologyCanvasMain />;
 }
