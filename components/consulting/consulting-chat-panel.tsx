@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Bot, User, Send, Loader2 } from "lucide-react";
+import { Bot, User, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,6 +11,9 @@ import { ChangeConfirmDialog, type ChangeConfirmSection } from "@/components/con
 import { toPascalCase } from "@/lib/utils";
 import type { Cardinality } from "@/lib/types/ontology";
 import { CASE_PLAYBOOKS } from "@/lib/case-playbook/scenarios";
+import { Streamdown } from "streamdown";
+import { mermaid } from "@streamdown/mermaid";
+import { cjk } from "@streamdown/cjk";
 
 interface Message {
   role: "user" | "assistant";
@@ -153,12 +156,16 @@ export function ConsultingChatPanel() {
     if (!input.trim()) return;
 
     const userMessage: Message = { role: "user", content: input };
-    setMessages((prev) => [...prev, userMessage]);
+    let assistantIndex = -1;
+    setMessages((prev) => {
+      assistantIndex = prev.length + 1;
+      return [...prev, userMessage, { role: "assistant", content: "" }];
+    });
     setInput("");
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/consulting-chat", {
+      const response = await fetch("/api/consulting-chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -167,15 +174,62 @@ export function ConsultingChatPanel() {
         }),
       });
 
-      const data = await response.json().catch(() => null);
       if (!response.ok) {
+        const data = await response.json().catch(() => null);
         const detail = data?.detail ? `\n${data.detail}` : "";
         throw new Error((data?.error || "请求失败") + detail);
       }
 
-      setMessages((prev) => [...prev, { role: "assistant", content: data?.reply || "（空响应）" }]);
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("SSE 响应不可读");
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let assistantText = "";
 
-      const plan = typeof data?.reply === "string" ? extractFirstJsonCodeBlock(data.reply) : null;
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() || "";
+        for (const part of parts) {
+          const line = part
+            .split("\n")
+            .map((x) => x.trim())
+            .find((x) => x.startsWith("data: "));
+          if (!line) continue;
+          const jsonText = line.slice("data: ".length);
+          let evt: any = null;
+          try {
+            evt = JSON.parse(jsonText);
+          } catch {
+            continue;
+          }
+
+          if (evt?.type === "assistant_delta") {
+            assistantText += String(evt?.delta || "");
+            setMessages((prev) => {
+              const next = [...prev];
+              const current = next[assistantIndex];
+              if (current?.role === "assistant") next[assistantIndex] = { ...current, content: assistantText };
+              return next;
+            });
+          } else if (evt?.type === "assistant_done") {
+            assistantText = String(evt?.text || assistantText || "（空响应）");
+            setMessages((prev) => {
+              const next = [...prev];
+              const current = next[assistantIndex];
+              if (current?.role === "assistant") next[assistantIndex] = { ...current, content: assistantText };
+              return next;
+            });
+          } else if (evt?.type === "error") {
+            const detail = evt?.detail ? `\n${evt.detail}` : "";
+            throw new Error(String(evt?.error || "请求失败") + detail);
+          }
+        }
+      }
+
+      const plan = typeof assistantText === "string" ? extractFirstJsonCodeBlock(assistantText) : null;
       if (plan) {
         const usedObjectApiNames = new Set(objectTypes.map((o) => o.apiName));
         const usedLinkApiNames = new Set(linkTypes.map((l) => l.apiName));
@@ -407,7 +461,15 @@ export function ConsultingChatPanel() {
         }
       }
     } catch (error: any) {
-      setMessages((prev) => [...prev, { role: "assistant", content: error?.message || "抱歉，生成失败，请重试。" }]);
+      const msg = error?.message || "抱歉，生成失败，请重试。";
+      setMessages((prev) => {
+        const next = [...prev];
+        if (assistantIndex >= 0 && next[assistantIndex]?.role === "assistant") {
+          next[assistantIndex] = { ...next[assistantIndex], content: msg };
+          return next;
+        }
+        return [...prev, { role: "assistant", content: msg }];
+      });
     } finally {
       setIsLoading(false);
     }
@@ -472,22 +534,19 @@ export function ConsultingChatPanel() {
                     : "bg-[#141414] border border-[#2d2d2d] text-[#d0d0d0]"
                 }`}
               >
-                <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+                {msg.role === "assistant" ? (
+                  <div className="prose prose-invert max-w-none prose-pre:bg-[#0b0b0b] prose-pre:border prose-pre:border-[#2d2d2d] prose-pre:rounded-md">
+                    <Streamdown plugins={{ mermaid, cjk }} isAnimating={isLoading && idx === messages.length - 1}>
+                      {msg.content || (isLoading && idx === messages.length - 1 ? "AI 正在思考…" : "")}
+                    </Streamdown>
+                  </div>
+                ) : (
+                  <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+                )}
               </div>
             </div>
           ))}
 
-          {isLoading && (
-            <div className="flex gap-3">
-              <div className="w-8 h-8 rounded-full bg-[#8B5CF6] text-white flex items-center justify-center flex-shrink-0">
-                <Bot className="w-5 h-5" />
-              </div>
-              <div className="p-3 rounded-lg bg-[#141414] border border-[#2d2d2d] flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-[#8B5CF6]" />
-                <span className="text-sm text-[#808080]">正在思考...</span>
-              </div>
-            </div>
-          )}
         </div>
       </ScrollArea>
 
