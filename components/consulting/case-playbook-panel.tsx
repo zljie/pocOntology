@@ -78,6 +78,20 @@ function buildChatMessage(params: {
       `这一步意图：${params.effectiveIntent || params.selectedStep.intentText}`
     );
   }
+  if (caseId === "sap-p2p-shortage-to-two-pr-variants") {
+    return (
+      `目标：为缺料预警构建两套请购方案（交期稳定版/价格最优版），并推演完整链路。\n\n` +
+      `案例：${params.selectedCase.title}\n\n` +
+      `请基于当前本体（datasets/relationships/action_types/rules/metrics）推演该案例，输出：\n` +
+      `1) 触发条件与关键意图拆解（从缺料预警开始）\n` +
+      `2) 每一步对应的动作（actionId）+ 输入字段（JSON schema 视角）+ 输出字段（可观测结果）\n` +
+      `3) 关键计算口径（交期统计、稳定性、价格口径）与风险提示\n` +
+      `4) 每一步用到的本体元素（对象/关系/动作/规则/指标）\n` +
+      `5) 缺失信息与补全问题（用于继续追问）\n\n` +
+      `当前我在看的步骤：${params.selectedStep.title}（${params.selectedStep.actionId}）\n` +
+      `这一步意图：${params.effectiveIntent || params.selectedStep.intentText}`
+    );
+  }
 
   return (
     `案例：${params.selectedCase.title}\n` +
