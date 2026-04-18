@@ -14,8 +14,8 @@ import { ImportDialog } from "@/components/proposal-system/import-dialog";
 import { OsiImportDialog } from "@/components/osi-import/osi-import-dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useUIStore } from "@/stores";
-import { BusinessDomainPlannerPanel } from "@/components/consulting/business-domain-planner-panel";
 import { ConsultingRightPanel } from "@/components/consulting/consulting-right-panel";
+import { ConsultingLeftPanel } from "@/components/consulting/consulting-left-panel";
 
 export default function HomePage() {
   const { showImportDialog, setShowImportDialog, workMode, openRightPanel } = useUIStore();
@@ -31,7 +31,7 @@ export default function HomePage() {
       <div className="flex flex-col h-screen">
         <Header />
         <ThreePanelLayout
-          leftPanel={workMode === "CONSULTING" ? <BusinessDomainPlannerPanel /> : <OntologyLayerPanel />}
+          leftPanel={workMode === "CONSULTING" ? <ConsultingLeftPanel /> : <OntologyLayerPanel />}
           centerPanel={<OntologyCanvas />}
           showBottomPreview={workMode !== "CONSULTING"}
           rightPanel={workMode === "CONSULTING" ? <ConsultingRightPanel /> : (

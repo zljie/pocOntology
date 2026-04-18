@@ -1,0 +1,2907 @@
+# yaml-language-server: $schema=./osi-schema.json
+
+version: "0.1.1"
+
+semantic_model:
+  - name: sap_p2p_procurement_ontology_model_v3
+    description: SAP 采购管理（P2P：PR→PO→GR→IV→Payment）语义本体模型（核心文档链路 + 组织结构约束 + 对账控制点 + 异常桥接对象；v3新增：缺料预警下的供应商交期/价格对比与两套请购方案生成）
+    ai_context:
+      instructions: >
+        用于采购到付款（P2P）分析、问答与可执行动作规划。优先使用本语义模型的结构化对象链路、状态与约束回答（Ontology-first），
+        如需解释“为何/依据”，再引用外部 SAP 文档或 KBA 作为证据补充（RAG-second）。涉及过账/付款建议时必须遵守：
+        1) 三单匹配（PO/GR/IV）数量与金额差异需先定位异常原因；2) GR/IR 对账长期不归零需提示排查；
+        3) 暂存发票（PARKED）必须 release 后才能 post/进入付款建议；4) 组织结构关系缺失优先视为配置/主数据问题。
+      synonyms:
+        - "SAP"
+        - "采购管理"
+        - "P2P"
+        - "Procure-to-Pay"
+        - "采购到付款"
+        - "请购"
+        - "采购订单"
+        - "收货"
+        - "供应商发票"
+        - "三单匹配"
+        - "GR/IR"
+      examples:
+        - "本月采购订单数量是多少？"
+        - "有哪些暂存发票（parked invoice）还未释放？"
+        - "为什么这个 PO 不可开票？"
+        - "三单匹配异常主要集中在哪些物料/供应商？"
+        - "GR/IR 未清金额是多少？"
+        - "从请购到采购订单平均要多少天？"
+
+    datasets:
+      # ==========================================================
+      # Dimensions / Master Data
+      # ==========================================================
+      - name: suppliers
+        source: sap.p2p.suppliers
+        primary_key: [supplier_id]
+        unique_keys:
+          - [supplier_id]
+          - [supplier_number]
+        description: 供应商（Business Partner / Supplier）
+        ai_context:
+          synonyms: ["供应商", "BP", "Business Partner", "Supplier"]
+        custom_extensions:
+          - vendor_name: COMMON
+            data: |
+              {
+                "namespace": "SAP_P2P",
+                "behavior_layer_version": "0.1",
+                "action_types": [
+                  {
+                    "id": "suppliers/block",
+                    "title": "冻结/阻断供应商",
+                    "kind": "command",
+                    "operation": "block",
+                    "aggregate": "Supplier",
+                    "entity_name": "suppliers",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["supplier_id"],
+                        "properties": {
+                          "supplier_id": { "type": "string" },
+                          "reason": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["冻结这个供应商", "把供应商设为 Blocked"],
+                    "tags": ["p2p", "supplier", "compliance"]
+                  },
+                  {
+                    "id": "suppliers/unblock",
+                    "title": "解冻/解除阻断供应商",
+                    "kind": "command",
+                    "operation": "unblock",
+                    "aggregate": "Supplier",
+                    "entity_name": "suppliers",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["supplier_id"],
+                        "properties": {
+                          "supplier_id": { "type": "string" },
+                          "comment": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["解冻这个供应商", "解除供应商阻断"],
+                    "tags": ["p2p", "supplier", "compliance"]
+                  }
+                ],
+                "rules": [
+                  {
+                    "id": "sap_p2p/rule_blocked_vendor_transaction_prevention",
+                    "title": "阻断供应商交易拦截策略",
+                    "severity": "warn",
+                    "when": { "entity": "dataset" },
+                    "constraint": { "type": "compliance" },
+                    "message": "当供应商状态为 Blocked 时，不应继续创建/审批 PO、过账发票或执行付款；应先明确解冻审批流程。",
+                    "remediation": "检查 suppliers.status 与阻断原因；若需交易，先走合规解冻流程（suppliers/unblock），再继续后续 P2P 动作。",
+                    "tags": ["p2p", "supplier", "blocked", "control"]
+                  }
+                ]
+              }
+        fields:
+          - name: supplier_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: suppliers.supplier_id
+            description: 供应商内部ID
+          - name: supplier_number
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: suppliers.supplier_number
+            description: 供应商编码
+          - name: supplier_name
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: suppliers.supplier_name
+            description: 供应商名称
+          - name: country
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: suppliers.country
+            description: 国家/地区
+          - name: status
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: suppliers.status
+            description: 状态（Active/Blocked 等）
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: suppliers.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: users
+        source: sap.p2p.users
+        primary_key: [user_id]
+        unique_keys:
+          - [user_id]
+          - [user_login]
+        description: 用户/员工（用于“我提交的单据”等按提交人维度过滤；占位数据集）
+        ai_context:
+          synonyms: ["用户", "员工", "User", "Employee"]
+        fields:
+          - name: user_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: users.user_id
+            description: 用户ID
+          - name: user_login
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: users.user_login
+            description: 登录名
+          - name: user_name
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: users.user_name
+            description: 用户姓名
+          - name: email
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: users.email
+            description: 邮箱
+          - name: status
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: users.status
+            description: 状态
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: users.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: materials
+        source: sap.p2p.materials
+        primary_key: [material_id]
+        unique_keys:
+          - [material_id]
+          - [material_number]
+        description: 物料主数据
+        ai_context:
+          synonyms: ["物料", "Material"]
+        fields:
+          - name: material_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: materials.material_id
+            description: 物料内部ID
+          - name: material_number
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: materials.material_number
+            description: 物料编码
+          - name: material_name
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: materials.material_name
+            description: 物料名称
+          - name: material_type
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: materials.material_type
+            description: 物料类型
+          - name: material_group_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: materials.material_group_id
+            description: 物料组ID（用于物料分组分析；占位字段/可由映射层补齐）
+          - name: base_uom
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: materials.base_uom
+            description: 基本计量单位
+          - name: status
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: materials.status
+            description: 状态（Active/Blocked 等）
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: materials.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: material_groups
+        source: sap.p2p.material_groups
+        primary_key: [material_group_id]
+        unique_keys:
+          - [material_group_id]
+          - [material_group_code]
+        description: 物料组（用于采购物料管理下钻）
+        ai_context:
+          synonyms: ["物料组", "Material Group"]
+        fields:
+          - name: material_group_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: material_groups.material_group_id
+            description: 物料组ID
+          - name: material_group_code
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: material_groups.material_group_code
+            description: 物料组编码
+          - name: material_group_name
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: material_groups.material_group_name
+            description: 物料组名称
+          - name: status
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: material_groups.status
+            description: 状态
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: material_groups.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: company_codes
+        source: sap.p2p.company_codes
+        primary_key: [company_code_id]
+        unique_keys:
+          - [company_code_id]
+          - [company_code]
+        description: 公司代码（Company Code）
+        ai_context:
+          synonyms: ["公司代码", "Company Code", "CompanyCode"]
+        fields:
+          - name: company_code_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: company_codes.company_code_id
+            description: 公司代码内部ID
+          - name: company_code
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: company_codes.company_code
+            description: 公司代码
+          - name: company_name
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: company_codes.company_name
+            description: 公司名称
+          - name: country
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: company_codes.country
+            description: 国家/地区
+          - name: currency
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: company_codes.currency
+            description: 本位币
+          - name: status
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: company_codes.status
+            description: 状态
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: company_codes.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: plants
+        source: sap.p2p.plants
+        primary_key: [plant_id]
+        unique_keys:
+          - [plant_id]
+          - [plant_code]
+        description: 工厂（Plant）
+        ai_context:
+          synonyms: ["工厂", "Plant"]
+        fields:
+          - name: plant_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: plants.plant_id
+            description: 工厂内部ID
+          - name: plant_code
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: plants.plant_code
+            description: 工厂代码
+          - name: plant_name
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: plants.plant_name
+            description: 工厂名称
+          - name: company_code_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: plants.company_code_id
+            description: 所属公司代码ID
+          - name: country
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: plants.country
+            description: 国家/地区
+          - name: status
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: plants.status
+            description: 状态
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: plants.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: purchasing_organizations
+        source: sap.p2p.purchasing_organizations
+        primary_key: [purchasing_org_id]
+        unique_keys:
+          - [purchasing_org_id]
+          - [purchasing_org_code]
+        description: 采购组织（Purchasing Organization）
+        ai_context:
+          synonyms: ["采购组织", "Purchasing Organization", "PurchOrg"]
+        fields:
+          - name: purchasing_org_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_organizations.purchasing_org_id
+            description: 采购组织ID
+          - name: purchasing_org_code
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_organizations.purchasing_org_code
+            description: 采购组织代码
+          - name: purchasing_org_name
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_organizations.purchasing_org_name
+            description: 采购组织名称
+          - name: company_code_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_organizations.company_code_id
+            description: 关联公司代码ID（若适用）
+          - name: status
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_organizations.status
+            description: 状态
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_organizations.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: purchasing_groups
+        source: sap.p2p.purchasing_groups
+        primary_key: [purchasing_group_id]
+        unique_keys:
+          - [purchasing_group_id]
+          - [purchasing_group_code]
+        description: 采购组（Purchasing Group）
+        ai_context:
+          synonyms: ["采购组", "Purchasing Group", "PurchGroup"]
+        fields:
+          - name: purchasing_group_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_groups.purchasing_group_id
+            description: 采购组ID
+          - name: purchasing_group_code
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_groups.purchasing_group_code
+            description: 采购组代码
+          - name: purchasing_group_name
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_groups.purchasing_group_name
+            description: 采购组名称
+          - name: status
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_groups.status
+            description: 状态
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_groups.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: payment_terms
+        source: sap.p2p.payment_terms
+        primary_key: [payment_term_id]
+        unique_keys:
+          - [payment_term_id]
+          - [payment_terms_code]
+        description: 付款条件（Payment Terms）
+        ai_context:
+          synonyms: ["付款条件", "Payment Terms", "Terms of Payment"]
+        fields:
+          - name: payment_term_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payment_terms.payment_term_id
+            description: 付款条件ID
+          - name: payment_terms_code
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payment_terms.payment_terms_code
+            description: 付款条件代码
+          - name: net_days
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payment_terms.net_days
+            description: 净到期天数（占位字段/可由映射层补齐）
+          - name: discount_days
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payment_terms.discount_days
+            description: 现金折扣天数（占位字段/可由映射层补齐）
+          - name: discount_rate
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payment_terms.discount_rate
+            description: 现金折扣比例（占位字段/可由映射层补齐）
+          - name: description
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payment_terms.description
+            description: 描述
+          - name: status
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payment_terms.status
+            description: 状态
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payment_terms.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: purchasing_info_records
+        source: sap.p2p.purchasing_info_records
+        primary_key: [info_record_id]
+        unique_keys:
+          - [info_record_id]
+        description: 采购信息记录（供应商×物料×工厂的采购信息与价格）
+        ai_context:
+          synonyms: ["采购信息记录", "Info Record", "Purchasing Info Record"]
+        custom_extensions:
+          - vendor_name: COMMON
+            data: |
+              {
+                "namespace": "SAP_P2P",
+                "behavior_layer_version": "0.1",
+                "action_types": [
+                  {
+                    "id": "purchasing_info_records/recommend_suppliers_for_material_shortage",
+                    "title": "缺料场景：推荐供应商（交期稳定版/价格最优版）",
+                    "kind": "query",
+                    "operation": "rank",
+                    "aggregate": "SourcingRecommendation",
+                    "entity_name": "purchasing_info_records",
+                    "idempotency": "idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["material_id", "plant_id"],
+                        "properties": {
+                          "material_id": { "type": "string" },
+                          "plant_id": { "type": "string" },
+                          "required_qty": { "type": "number" },
+                          "need_by_date": { "type": "string", "format": "date-time" },
+                          "as_of_time": { "type": "string", "format": "date-time" },
+                          "lookback_receipts": { "type": "integer", "default": 5 },
+                          "lookback_days": { "type": "integer", "default": 180 },
+                          "top_n": { "type": "integer", "default": 2 },
+                          "strategies": {
+                            "type": "array",
+                            "items": { "type": "string", "enum": ["STABLE_ETA", "BEST_PRICE"] },
+                            "default": ["STABLE_ETA", "BEST_PRICE"]
+                          },
+                          "currency": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["物料即将缺失，推荐两个下单方案：到货稳定的供应商+价格最优的供应商", "给定物料与工厂，按近5次收货交期与有效采购价格推荐供应商"],
+                    "tags": ["p2p", "shortage", "sourcing", "supplier", "lead_time", "price"]
+                  }
+                ],
+                "rules": [
+                  {
+                    "id": "sap_p2p/rule_lead_time_and_price_semantics",
+                    "title": "交期/价格口径说明（缺料推荐）",
+                    "severity": "warn",
+                    "when": { "entity": "dataset" },
+                    "constraint": { "type": "definition" },
+                    "message": "缺料推荐通常结合：1) 交期（PO.created_date → GR.posting_date，按 material_id/plant_id/supplier_id 统计 min/max/median/p90 与稳定性 spread）；2) 价格（优先使用有效期内 purchasing_info_records.net_price_amount，缺失时回退到最近成交价 purchase_order_items.net_price_amount）。",
+                    "remediation": "请确保 goods_receipt_items_to_po_items、goods_receipt_items_to_header、purchase_order_items_to_header 关系可追溯；并统一 net_price_amount 的单价/行金额与币种折算口径。",
+                    "tags": ["p2p", "definition", "lead_time", "price"]
+                  }
+                ]
+              }
+        fields:
+          - name: info_record_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_info_records.info_record_id
+            description: 信息记录ID
+          - name: supplier_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_info_records.supplier_id
+            description: 供应商ID
+          - name: material_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_info_records.material_id
+            description: 物料ID
+          - name: plant_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_info_records.plant_id
+            description: 工厂ID
+          - name: net_price_amount
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_info_records.net_price_amount
+            description: 净价金额（未税，占位字段/可由映射层补齐）
+          - name: price_unit
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_info_records.price_unit
+            description: 价格单位（占位字段/可由映射层补齐）
+          - name: currency
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_info_records.currency
+            description: 币种
+          - name: valid_from
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_info_records.valid_from
+            description: 有效期起
+            dimension:
+              is_time: true
+          - name: valid_to
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_info_records.valid_to
+            description: 有效期止
+            dimension:
+              is_time: true
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchasing_info_records.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      # ==========================================================
+      # Facts / Documents (P2P)
+      # ==========================================================
+      - name: purchase_requisitions
+        source: sap.p2p.purchase_requisitions
+        primary_key: [purchase_requisition_id]
+        unique_keys:
+          - [purchase_requisition_id]
+          - [purchase_requisition_number]
+        description: 请购单（Purchase Requisition, PR）- Header
+        ai_context:
+          synonyms: ["请购单", "PR", "Purchase Requisition"]
+        custom_extensions:
+          - vendor_name: COMMON
+            data: |
+              {
+                "namespace": "SAP_P2P",
+                "behavior_layer_version": "0.1",
+                "action_types": [
+                  {
+                    "id": "purchase_requisitions/validate",
+                    "title": "请购单校验（仅校验不提交）",
+                    "kind": "command",
+                    "operation": "validate",
+                    "aggregate": "PurchaseRequisition",
+                    "entity_name": "purchase_requisitions",
+                    "idempotency": "idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["company_code_id", "items"],
+                        "properties": {
+                          "company_code_id": { "type": "string" },
+                          "plant_id": { "type": "string" },
+                          "purchasing_org_id": { "type": "string" },
+                          "purchasing_group_id": { "type": "string" },
+                          "supplier_id": { "type": "string" },
+                          "items": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["material_id", "quantity"],
+                              "properties": {
+                                "material_id": { "type": "string" },
+                                "quantity": { "type": "number" },
+                                "unit_of_measure": { "type": "string" },
+                                "net_price_amount": { "type": "number" },
+                                "currency": { "type": "string" }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "examples": ["校验这张请购单但不要提交", "检查请购单数据是否合规"],
+                    "tags": ["p2p", "pr", "validation"]
+                  },
+                  {
+                    "id": "purchase_requisitions/create",
+                    "title": "创建请购单",
+                    "kind": "command",
+                    "operation": "create",
+                    "aggregate": "PurchaseRequisition",
+                    "entity_name": "purchase_requisitions",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["company_code_id", "items"],
+                        "properties": {
+                          "company_code_id": { "type": "string" },
+                          "plant_id": { "type": "string" },
+                          "purchasing_org_id": { "type": "string" },
+                          "purchasing_group_id": { "type": "string" },
+                          "supplier_id": { "type": "string" },
+                          "requested_delivery_date": { "type": "string", "format": "date-time" },
+                          "items": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["material_id", "quantity"],
+                              "properties": {
+                                "material_id": { "type": "string" },
+                                "quantity": { "type": "number" },
+                                "unit_of_measure": { "type": "string" },
+                                "net_price_amount": { "type": "number" },
+                                "currency": { "type": "string" }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "examples": ["创建一张请购单", "我需要请购 10 个物料"],
+                    "tags": ["p2p", "pr", "crud"]
+                  },
+                  {
+                    "id": "purchase_requisitions/approve_or_release",
+                    "title": "审批/释放请购单",
+                    "kind": "command",
+                    "operation": "approve",
+                    "aggregate": "PurchaseRequisition",
+                    "entity_name": "purchase_requisitions",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["purchase_requisition_id", "decision"],
+                        "properties": {
+                          "purchase_requisition_id": { "type": "string" },
+                          "decision": { "type": "string", "enum": ["approve", "reject"] },
+                          "comment": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["审批这张请购单", "释放 PR"],
+                    "tags": ["p2p", "pr", "approval"]
+                  },
+                  {
+                    "id": "purchase_requisitions/find_min_supplier_for_material",
+                    "title": "查找指定物料在时间范围内采购金额最小的供应商（基于PR）",
+                    "kind": "query",
+                    "operation": "analyze",
+                    "aggregate": "P2PAnalytics",
+                    "entity_name": "purchase_requisitions",
+                    "idempotency": "idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["date_range"],
+                        "properties": {
+                          "date_range": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["start", "end"],
+                            "properties": {
+                              "start": { "type": "string", "format": "date-time" },
+                              "end": { "type": "string", "format": "date-time" }
+                            }
+                          },
+                          "material_id": { "type": "string" },
+                          "material_keywords": { "type": "array", "items": { "type": "string" } },
+                          "submitted_by_user_id": { "type": "string" },
+                          "amount_formula": {
+                            "type": "string",
+                            "enum": ["line_amount", "unit_price_times_quantity"],
+                            "default": "unit_price_times_quantity"
+                          },
+                          "currency": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["去年我提交的泡面PR里，采购金额最小的供应商是谁？"],
+                    "tags": ["p2p", "pr", "analytics", "supplier"]
+                  },
+                  {
+                    "id": "purchase_requisitions/create_two_variants_for_material_shortage",
+                    "title": "缺料场景：生成两套请购方案（交期稳定版/价格最优版）",
+                    "kind": "command",
+                    "operation": "create",
+                    "aggregate": "PurchaseRequisition",
+                    "entity_name": "purchase_requisitions",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["company_code_id", "plant_id", "material_id", "quantity"],
+                        "properties": {
+                          "company_code_id": { "type": "string" },
+                          "plant_id": { "type": "string" },
+                          "purchasing_org_id": { "type": "string" },
+                          "purchasing_group_id": { "type": "string" },
+                          "material_id": { "type": "string" },
+                          "quantity": { "type": "number" },
+                          "unit_of_measure": { "type": "string" },
+                          "need_by_date": { "type": "string", "format": "date-time" },
+                          "as_of_time": { "type": "string", "format": "date-time" },
+                          "lookback_receipts": { "type": "integer", "default": 5 },
+                          "lookback_days": { "type": "integer", "default": 180 },
+                          "comment": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["物料X即将缺料，帮我生成两套请购：交期最稳的供应商一套、价格最优的供应商一套"],
+                    "tags": ["p2p", "pr", "shortage", "sourcing", "variant"]
+                  }
+                ],
+                "rules": []
+              }
+        fields:
+          - name: purchase_requisition_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisitions.purchase_requisition_id
+            description: PR 内部ID
+          - name: purchase_requisition_number
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisitions.purchase_requisition_number
+            description: PR 单据号
+          - name: status
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisitions.status
+            description: 状态（Draft/Released/Approved/Cancelled 等）
+          - name: supplier_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisitions.supplier_id
+            description: 供应商ID（如适用）
+          - name: created_by_user_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisitions.created_by_user_id
+            description: 提交人用户ID（占位字段；用于“我提交的”维度过滤）
+          - name: company_code_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisitions.company_code_id
+            description: 公司代码ID
+          - name: plant_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisitions.plant_id
+            description: 工厂ID
+          - name: purchasing_org_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisitions.purchasing_org_id
+            description: 采购组织ID
+          - name: purchasing_group_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisitions.purchasing_group_id
+            description: 采购组ID
+          - name: requested_delivery_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisitions.requested_delivery_date
+            description: 期望交付日期
+            dimension:
+              is_time: true
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisitions.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: purchase_requisition_items
+        source: sap.p2p.purchase_requisition_items
+        primary_key: [purchase_requisition_item_id]
+        unique_keys:
+          - [purchase_requisition_item_id]
+        description: 请购单行项目（PR Item）
+        ai_context:
+          synonyms: ["请购单行", "PR 行项目", "Purchase Requisition Item"]
+        custom_extensions:
+          - vendor_name: COMMON
+            data: |
+              {
+                "namespace": "SAP_P2P",
+                "behavior_layer_version": "0.1",
+                "action_types": [],
+                "rules": [
+                  {
+                    "id": "sap_p2p/rule_pr_item_amount_semantics",
+                    "title": "PR 行金额口径说明（用于供应商比价）",
+                    "severity": "warn",
+                    "when": { "entity": "dataset" },
+                    "constraint": { "type": "definition" },
+                    "message": "purchase_requisition_items.net_price_amount 可能是单价或行金额；在做“采购金额最小供应商”分析前需统一口径。",
+                    "remediation": "建议映射层明确：若为单价则金额=net_price_amount×quantity；若为行金额则直接用 net_price_amount。多币种需补齐汇率折算口径。",
+                    "tags": ["p2p", "pr", "amount", "definition"]
+                  },
+                  {
+                    "id": "sap_p2p/rule_material_keyword_match",
+                    "title": "物料关键词匹配说明（如“泡面”）",
+                    "severity": "warn",
+                    "when": { "entity": "dataset" },
+                    "constraint": { "type": "definition" },
+                    "message": "按关键词识别物料（如泡面）通常依赖 materials.material_name 或 PR 行 description 的文本匹配，存在同义词/别名风险。",
+                    "remediation": "建议补齐物料别名/标签（例如 materials.aliases/material_tags）或在映射层维护关键词字典，提高检索稳定性。",
+                    "tags": ["p2p", "material", "keyword", "definition"]
+                  }
+                ]
+              }
+        fields:
+          - name: purchase_requisition_item_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisition_items.purchase_requisition_item_id
+            description: PR Item 内部ID
+          - name: purchase_requisition_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisition_items.purchase_requisition_id
+            description: PR Header ID
+          - name: item_number
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisition_items.item_number
+            description: 行号
+          - name: material_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisition_items.material_id
+            description: 物料ID
+          - name: description
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisition_items.description
+            description: 行描述/短文本
+          - name: quantity
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisition_items.quantity
+            description: 数量
+          - name: unit_of_measure
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisition_items.unit_of_measure
+            description: 计量单位
+          - name: net_price_amount
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisition_items.net_price_amount
+            description: 净价金额（未税）
+          - name: currency
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisition_items.currency
+            description: 币种
+          - name: plant_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisition_items.plant_id
+            description: 工厂ID（如 item 粒度维护）
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_requisition_items.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: purchase_orders
+        source: sap.p2p.purchase_orders
+        primary_key: [purchase_order_id]
+        unique_keys:
+          - [purchase_order_id]
+          - [purchase_order_number]
+        description: 采购订单（Purchase Order, PO）- Header
+        ai_context:
+          synonyms: ["采购订单", "PO", "Purchase Order"]
+        custom_extensions:
+          - vendor_name: COMMON
+            data: |
+              {
+                "namespace": "SAP_P2P",
+                "behavior_layer_version": "0.1",
+                "action_types": [
+                  {
+                    "id": "purchase_orders/create_from_pr",
+                    "title": "从请购单生成采购订单",
+                    "kind": "command",
+                    "operation": "create",
+                    "aggregate": "PurchaseOrder",
+                    "entity_name": "purchase_orders",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["purchase_requisition_id"],
+                        "properties": {
+                          "purchase_requisition_id": { "type": "string" },
+                          "supplier_id": { "type": "string" },
+                          "comment": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["把这张请购单转成采购订单", "从 PR 生成 PO"],
+                    "tags": ["p2p", "po", "pr_to_po"]
+                  },
+                  {
+                    "id": "purchase_orders/create",
+                    "title": "创建采购订单",
+                    "kind": "command",
+                    "operation": "create",
+                    "aggregate": "PurchaseOrder",
+                    "entity_name": "purchase_orders",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["company_code_id", "supplier_id", "items"],
+                        "properties": {
+                          "company_code_id": { "type": "string" },
+                          "purchasing_org_id": { "type": "string" },
+                          "purchasing_group_id": { "type": "string" },
+                          "plant_id": { "type": "string" },
+                          "supplier_id": { "type": "string" },
+                          "currency": { "type": "string" },
+                          "payment_terms": { "type": "string" },
+                          "items": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["material_id", "quantity"],
+                              "properties": {
+                                "material_id": { "type": "string" },
+                                "quantity": { "type": "number" },
+                                "unit_of_measure": { "type": "string" },
+                                "net_price_amount": { "type": "number" },
+                                "currency": { "type": "string" },
+                                "delivery_date": { "type": "string", "format": "date-time" }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "examples": ["创建一张采购订单", "下 PO 给供应商"],
+                    "tags": ["p2p", "po", "crud"]
+                  },
+                  {
+                    "id": "purchase_orders/approve_or_release",
+                    "title": "审批/释放采购订单",
+                    "kind": "command",
+                    "operation": "approve",
+                    "aggregate": "PurchaseOrder",
+                    "entity_name": "purchase_orders",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["purchase_order_id", "decision"],
+                        "properties": {
+                          "purchase_order_id": { "type": "string" },
+                          "decision": { "type": "string", "enum": ["approve", "reject"] },
+                          "comment": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["审批这张 PO", "释放采购订单"],
+                    "tags": ["p2p", "po", "approval"]
+                  },
+                  {
+                    "id": "purchase_orders/analyze_pr_to_po_cycle_time",
+                    "title": "PR→PO 周期分析",
+                    "kind": "query",
+                    "operation": "analyze",
+                    "aggregate": "P2PAnalytics",
+                    "entity_name": "purchase_orders",
+                    "idempotency": "idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "date_range": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["start", "end"],
+                            "properties": {
+                              "start": { "type": "string", "format": "date-time" },
+                              "end": { "type": "string", "format": "date-time" }
+                            }
+                          },
+                          "group_by": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": ["company_code_id", "purchasing_org_id", "purchasing_group_id", "supplier_id", "plant_id", "material_group_id"]
+                            }
+                          },
+                          "stats": {
+                            "type": "array",
+                            "items": { "type": "string", "enum": ["avg_days", "median_days", "p75_days", "p90_days"] },
+                            "default": ["avg_days"]
+                          }
+                        }
+                      }
+                    },
+                    "examples": ["从请购到采购订单平均要多少天？", "按采购组拆解 PR→PO 周期"],
+                    "tags": ["p2p", "analytics", "cycle_time"]
+                  },
+                  {
+                    "id": "purchase_orders/analyze_po_to_gr_lead_time",
+                    "title": "PO→GR 到货交期分析（同款物料：最快/最慢/稳定性）",
+                    "kind": "query",
+                    "operation": "analyze",
+                    "aggregate": "P2PAnalytics",
+                    "entity_name": "purchase_orders",
+                    "idempotency": "idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["material_id"],
+                        "properties": {
+                          "material_id": { "type": "string" },
+                          "plant_id": { "type": "string" },
+                          "date_range": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["start", "end"],
+                            "properties": {
+                              "start": { "type": "string", "format": "date-time" },
+                              "end": { "type": "string", "format": "date-time" }
+                            }
+                          },
+                          "lookback_receipts": { "type": "integer", "default": 5 },
+                          "group_by": {
+                            "type": "array",
+                            "items": { "type": "string", "enum": ["supplier_id", "plant_id"] },
+                            "default": ["supplier_id"]
+                          },
+                          "stats": {
+                            "type": "array",
+                            "items": { "type": "string", "enum": ["min_days", "max_days", "avg_days", "median_days", "p90_days", "stability_spread_days"] },
+                            "default": ["min_days", "max_days", "median_days", "p90_days", "stability_spread_days"]
+                          }
+                        }
+                      }
+                    },
+                    "examples": ["最近5次同款物料下单到到货的最快/最慢要多久？", "按供应商对比同物料交期稳定性（p90-p10）"],
+                    "tags": ["p2p", "analytics", "lead_time", "po_to_gr", "supplier"]
+                  },
+                  {
+                    "id": "purchase_orders/analyze_three_way_match_exception_hotspots",
+                    "title": "三单匹配异常热点分析",
+                    "kind": "query",
+                    "operation": "analyze",
+                    "aggregate": "P2PAnalytics",
+                    "entity_name": "purchase_orders",
+                    "idempotency": "idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "date_range": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["start", "end"],
+                            "properties": {
+                              "start": { "type": "string", "format": "date-time" },
+                              "end": { "type": "string", "format": "date-time" }
+                            }
+                          },
+                          "group_by": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": ["supplier_id", "material_id", "material_group_id", "plant_id", "company_code_id"]
+                            },
+                            "default": ["supplier_id", "material_id"]
+                          },
+                          "top_n": { "type": "integer", "default": 20 }
+                        }
+                      }
+                    },
+                    "examples": ["三单匹配异常主要集中在哪些物料/供应商？", "列出异常最多的供应商 TOP20"],
+                    "tags": ["p2p", "analytics", "three_way_match", "exceptions"]
+                  }
+                ],
+                "rules": [
+                  {
+                    "id": "sap_p2p/rule_three_way_match",
+                    "title": "三单匹配（PO/GR/IV）约束",
+                    "severity": "warn",
+                    "when": { "entity": "dataset" },
+                    "constraint": { "type": "consistency" },
+                    "message": "给出“过账/付款”建议前，应先校验三单匹配：PO/GR/IV 在数量与金额差异超过阈值时，不应直接建议过账或支付，必须先标记异常并追溯到 PO item / GR item / IV item。",
+                    "remediation": "检查部分收货/部分开票；核对币种、税、价格条件；确认 GR 与 IV 是否引用同一 PO item。",
+                    "tags": ["p2p", "three_way_match", "control"]
+                  },
+                  {
+                    "id": "sap_p2p/rule_gr_ir_reconciliation",
+                    "title": "GR/IR 对账提示",
+                    "severity": "warn",
+                    "when": { "entity": "dataset" },
+                    "constraint": { "type": "reconciliation" },
+                    "message": "GR/IR 未清金额长期不归零时，应提示排查：缺失发票、数量差异或价格差异，并沿文档链路追溯。",
+                    "remediation": "从 GR/IR open amount 追溯到 GR、IV 与 PO；检查是否存在未到票、未入库或差异过账。",
+                    "tags": ["p2p", "gr_ir", "control"]
+                  },
+                  {
+                    "id": "sap_p2p/rule_org_relationship_integrity",
+                    "title": "组织结构关系完整性",
+                    "severity": "error",
+                    "when": { "entity": "dataset" },
+                    "constraint": { "type": "relationship_integrity" },
+                    "message": "若 PR/PO 缺失 company_code/plant/purchasing_org/purchasing_group 等关联，优先视为配置或主数据问题，不应直接给出流程建议。",
+                    "remediation": "先补齐组织结构对象与关系（Plant→CompanyCode 等），再进行单据流程与指标分析。",
+                    "tags": ["p2p", "org", "integrity"]
+                  },
+                  {
+                    "id": "sap_p2p/rule_parked_invoice_state_machine",
+                    "title": "暂存发票（PARKED）状态机约束",
+                    "severity": "warn",
+                    "when": { "entity": "dataset" },
+                    "constraint": { "type": "state_machine" },
+                    "message": "当供应商发票状态为 PARKED 时，不应直接建议 post 或进入付款；必须先 release 再 post。",
+                    "remediation": "先执行 supplier_invoices/release，再视情况 post；如存在三单匹配异常先处理异常。",
+                    "tags": ["p2p", "invoice", "parked"]
+                  },
+                  {
+                    "id": "sap_p2p/rule_po_not_invoiceable_bridge",
+                    "title": "PO 不可开票（桥接对象优先）",
+                    "severity": "warn",
+                    "when": { "entity": "dataset" },
+                    "constraint": { "type": "diagnostic" },
+                    "message": "当出现“PO 不可开票/流程通信错误”等场景，应优先检查 supplier_invoice_requests 是否生成及其状态，并提示关注 account assignment type 适配性。",
+                    "remediation": "查询 supplier_invoice_requests 关联该 PO 的记录与错误码；检查科目分配类型是否满足开票流程要求。",
+                    "tags": ["p2p", "invoiceable", "bridge", "kba"]
+                  }
+                ]
+              }
+        fields:
+          - name: purchase_order_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_orders.purchase_order_id
+            description: PO 内部ID
+          - name: purchase_order_number
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_orders.purchase_order_number
+            description: PO 单据号
+          - name: status
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_orders.status
+            description: 状态（Draft/Released/Approved/Closed/Cancelled 等）
+          - name: supplier_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_orders.supplier_id
+            description: 供应商ID
+          - name: company_code_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_orders.company_code_id
+            description: 公司代码ID
+          - name: purchasing_org_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_orders.purchasing_org_id
+            description: 采购组织ID
+          - name: purchasing_group_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_orders.purchasing_group_id
+            description: 采购组ID
+          - name: plant_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_orders.plant_id
+            description: 工厂ID（可选；占位字段/可由映射层补齐）
+          - name: currency
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_orders.currency
+            description: 币种
+          - name: payment_terms
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_orders.payment_terms
+            description: 付款条件（占位字段；建议映射为 payment_terms.payment_terms_code，或由映射层补齐结构化字段）
+          - name: source_purchase_requisition_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_orders.source_purchase_requisition_id
+            description: 来源 PR ID（用于 PR→PO 追溯）
+          - name: source_pr_created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_orders.source_pr_created_date
+            description: 来源 PR 创建日期（用于周期指标；占位字段/可由映射层补齐；建议由 PR.created_date 回填）
+            dimension:
+              is_time: true
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_orders.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: purchase_order_items
+        source: sap.p2p.purchase_order_items
+        primary_key: [purchase_order_item_id]
+        unique_keys:
+          - [purchase_order_item_id]
+        description: 采购订单行项目（PO Item）
+        ai_context:
+          synonyms: ["采购订单行", "PO 行项目", "Purchase Order Item"]
+        fields:
+          - name: purchase_order_item_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_items.purchase_order_item_id
+            description: PO Item 内部ID
+          - name: purchase_order_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_items.purchase_order_id
+            description: PO Header ID
+          - name: item_number
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_items.item_number
+            description: 行号
+          - name: material_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_items.material_id
+            description: 物料ID
+          - name: plant_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_items.plant_id
+            description: 工厂ID
+          - name: quantity
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_items.quantity
+            description: 数量
+          - name: unit_of_measure
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_items.unit_of_measure
+            description: 计量单位
+          - name: net_price_amount
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_items.net_price_amount
+            description: 净价金额（未税）
+          - name: currency
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_items.currency
+            description: 币种
+          - name: delivery_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_items.delivery_date
+            description: 交货日期
+            dimension:
+              is_time: true
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_items.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: purchase_order_item_account_assignments
+        source: sap.p2p.purchase_order_item_account_assignments
+        primary_key: [account_assignment_id]
+        unique_keys:
+          - [account_assignment_id]
+        description: PO 行项目科目分配（Account Assignment）
+        ai_context:
+          synonyms: ["科目分配", "Account Assignment"]
+        fields:
+          - name: account_assignment_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_item_account_assignments.account_assignment_id
+            description: 科目分配ID
+          - name: purchase_order_item_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_item_account_assignments.purchase_order_item_id
+            description: PO Item ID
+          - name: gl_account
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_item_account_assignments.gl_account
+            description: 总账科目（占位字段）
+          - name: cost_center
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_item_account_assignments.cost_center
+            description: 成本中心（占位字段）
+          - name: internal_order
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_item_account_assignments.internal_order
+            description: 内部订单（占位字段）
+          - name: wbs_element
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_item_account_assignments.wbs_element
+            description: WBS 元素（占位字段）
+          - name: amount
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_item_account_assignments.amount
+            description: 分配金额
+          - name: currency
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_item_account_assignments.currency
+            description: 币种
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: purchase_order_item_account_assignments.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: goods_receipts
+        source: sap.p2p.goods_receipts
+        primary_key: [goods_receipt_id]
+        unique_keys:
+          - [goods_receipt_id]
+          - [material_document_number]
+        description: 收货（Goods Receipt, GR）- Header / 物料凭证头（概念层）
+        ai_context:
+          synonyms: ["收货", "GR", "Goods Receipt", "物料凭证"]
+        custom_extensions:
+          - vendor_name: COMMON
+            data: |
+              {
+                "namespace": "SAP_P2P",
+                "behavior_layer_version": "0.1",
+                "action_types": [
+                  {
+                    "id": "goods_receipts/post",
+                    "title": "过账收货（Post GR）",
+                    "kind": "command",
+                    "operation": "post",
+                    "aggregate": "GoodsReceipt",
+                    "entity_name": "goods_receipts",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["purchase_order_id", "items"],
+                        "properties": {
+                          "purchase_order_id": { "type": "string" },
+                          "posting_date": { "type": "string", "format": "date-time" },
+                          "items": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["purchase_order_item_id", "quantity"],
+                              "properties": {
+                                "purchase_order_item_id": { "type": "string" },
+                                "quantity": { "type": "number" },
+                                "unit_of_measure": { "type": "string" }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "examples": ["对 PO 做收货过账", "过账 GR"],
+                    "tags": ["p2p", "gr", "post"]
+                  },
+                  {
+                    "id": "goods_receipts/reverse",
+                    "title": "冲销收货（Reverse GR）",
+                    "kind": "command",
+                    "operation": "reverse",
+                    "aggregate": "GoodsReceipt",
+                    "entity_name": "goods_receipts",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["goods_receipt_id"],
+                        "properties": {
+                          "goods_receipt_id": { "type": "string" },
+                          "reason": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["冲销这笔收货", "撤销 GR"],
+                    "tags": ["p2p", "gr", "reverse"]
+                  },
+                  {
+                    "id": "goods_receipts/analyze_gr_ir_open_amount",
+                    "title": "GR/IR 未清金额分析",
+                    "kind": "query",
+                    "operation": "analyze",
+                    "aggregate": "P2PAnalytics",
+                    "entity_name": "goods_receipts",
+                    "idempotency": "idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "as_of_date": { "type": "string", "format": "date-time" },
+                          "group_by": {
+                            "type": "array",
+                            "items": { "type": "string", "enum": ["company_code_id", "supplier_id", "plant_id", "purchase_order_item_id"] },
+                            "default": ["company_code_id"]
+                          },
+                          "top_n": { "type": "integer", "default": 20 }
+                        }
+                      }
+                    },
+                    "examples": ["GR/IR 未清金额是多少？", "按供应商看 GR/IR 未清 TOP20"],
+                    "tags": ["p2p", "analytics", "gr_ir"]
+                  }
+                ],
+                "rules": []
+              }
+        fields:
+          - name: goods_receipt_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipts.goods_receipt_id
+            description: GR 内部ID
+          - name: material_document_number
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipts.material_document_number
+            description: 物料凭证号
+          - name: status
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipts.status
+            description: 状态
+          - name: supplier_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipts.supplier_id
+            description: 供应商ID（如可获取）
+          - name: company_code_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipts.company_code_id
+            description: 公司代码ID
+          - name: plant_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipts.plant_id
+            description: 工厂ID
+          - name: posting_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipts.posting_date
+            description: 过账日期
+            dimension:
+              is_time: true
+          - name: gr_ir_amount
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipts.gr_ir_amount
+            description: GR/IR 未清金额（占位字段/映射层补齐）
+          - name: currency
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipts.currency
+            description: 币种
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipts.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: gr_ir_open_items
+        source: sap.p2p.gr_ir_open_items
+        primary_key: [gr_ir_open_item_id]
+        unique_keys:
+          - [gr_ir_open_item_id]
+        description: GR/IR 未清明细（Open Items，用于对账与未清金额口径；建议由会计/清账科目或对账视图映射）
+        ai_context:
+          synonyms: ["GR/IR 未清", "GRIR Open Items", "对账未清明细"]
+        fields:
+          - name: gr_ir_open_item_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: gr_ir_open_items.gr_ir_open_item_id
+            description: 未清明细ID
+          - name: goods_receipt_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: gr_ir_open_items.goods_receipt_id
+            description: 关联 GR ID（如可追溯）
+          - name: purchase_order_item_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: gr_ir_open_items.purchase_order_item_id
+            description: 关联 PO 行ID（建议口径以 PO 行为粒度）
+          - name: supplier_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: gr_ir_open_items.supplier_id
+            description: 供应商ID
+          - name: company_code_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: gr_ir_open_items.company_code_id
+            description: 公司代码ID
+          - name: open_amount
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: gr_ir_open_items.open_amount
+            description: 未清金额（口径：GR/IR 清账科目未清余额；需映射层固化币种与汇率口径）
+          - name: currency
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: gr_ir_open_items.currency
+            description: 币种
+          - name: as_of_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: gr_ir_open_items.as_of_date
+            description: 截止日期（用于快照口径）
+            dimension:
+              is_time: true
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: gr_ir_open_items.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: goods_receipt_items
+        source: sap.p2p.goods_receipt_items
+        primary_key: [goods_receipt_item_id]
+        unique_keys:
+          - [goods_receipt_item_id]
+        description: 收货行项目（GR Item）
+        ai_context:
+          synonyms: ["收货行", "GR 行项目", "Goods Receipt Item"]
+        fields:
+          - name: goods_receipt_item_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipt_items.goods_receipt_item_id
+            description: GR Item ID
+          - name: goods_receipt_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipt_items.goods_receipt_id
+            description: GR Header ID
+          - name: item_number
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipt_items.item_number
+            description: 行号
+          - name: material_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipt_items.material_id
+            description: 物料ID
+          - name: purchase_order_item_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipt_items.purchase_order_item_id
+            description: 关联 PO Item ID（用于三单匹配）
+          - name: quantity
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipt_items.quantity
+            description: 数量
+          - name: unit_of_measure
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipt_items.unit_of_measure
+            description: 计量单位
+          - name: net_amount
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipt_items.net_amount
+            description: 金额（占位字段；需明确口径：未税/含税、币种与价格条件；用于三单匹配金额差异分析）
+          - name: currency
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipt_items.currency
+            description: 币种
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: goods_receipt_items.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: supplier_invoices
+        source: sap.p2p.supplier_invoices
+        primary_key: [supplier_invoice_id]
+        unique_keys:
+          - [supplier_invoice_id]
+          - [invoice_number]
+        description: 供应商发票（Supplier Invoice, IV）- Header
+        ai_context:
+          synonyms: ["供应商发票", "发票校验", "IV", "Supplier Invoice", "MIRO", "parked invoice"]
+        custom_extensions:
+          - vendor_name: COMMON
+            data: |
+              {
+                "namespace": "SAP_P2P",
+                "behavior_layer_version": "0.1",
+                "action_types": [
+                  {
+                    "id": "supplier_invoices/park",
+                    "title": "暂存供应商发票（Park）",
+                    "kind": "command",
+                    "operation": "park",
+                    "aggregate": "SupplierInvoice",
+                    "entity_name": "supplier_invoices",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["company_code_id", "supplier_id", "invoice_date", "items"],
+                        "properties": {
+                          "company_code_id": { "type": "string" },
+                          "supplier_id": { "type": "string" },
+                          "invoice_date": { "type": "string", "format": "date-time" },
+                          "currency": { "type": "string" },
+                          "items": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["purchase_order_item_id", "quantity", "net_amount"],
+                              "properties": {
+                                "purchase_order_item_id": { "type": "string" },
+                                "quantity": { "type": "number" },
+                                "unit_of_measure": { "type": "string" },
+                                "net_amount": { "type": "number" },
+                                "currency": { "type": "string" }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "examples": ["暂存一张供应商发票", "先 park 发票再审批"],
+                    "tags": ["p2p", "invoice", "park"]
+                  },
+                  {
+                    "id": "supplier_invoices/release",
+                    "title": "释放暂存发票（Release）",
+                    "kind": "command",
+                    "operation": "release",
+                    "aggregate": "SupplierInvoice",
+                    "entity_name": "supplier_invoices",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["supplier_invoice_id"],
+                        "properties": {
+                          "supplier_invoice_id": { "type": "string" },
+                          "comment": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["释放这张暂存发票", "release parked invoice"],
+                    "tags": ["p2p", "invoice", "release"]
+                  },
+                  {
+                    "id": "supplier_invoices/post",
+                    "title": "过账供应商发票（Post）",
+                    "kind": "command",
+                    "operation": "post",
+                    "aggregate": "SupplierInvoice",
+                    "entity_name": "supplier_invoices",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["supplier_invoice_id"],
+                        "properties": {
+                          "supplier_invoice_id": { "type": "string" },
+                          "posting_date": { "type": "string", "format": "date-time" }
+                        }
+                      }
+                    },
+                    "examples": ["过账这张发票", "post invoice"],
+                    "tags": ["p2p", "invoice", "post"]
+                  },
+                  {
+                    "id": "supplier_invoices/reverse",
+                    "title": "冲销发票（Reverse）",
+                    "kind": "command",
+                    "operation": "reverse",
+                    "aggregate": "SupplierInvoice",
+                    "entity_name": "supplier_invoices",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["supplier_invoice_id"],
+                        "properties": {
+                          "supplier_invoice_id": { "type": "string" },
+                          "reason": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["冲销这张发票", "reverse invoice"],
+                    "tags": ["p2p", "invoice", "reverse"]
+                  }
+                ],
+                "rules": [
+                  {
+                    "id": "sap_p2p/rule_invoice_park_release_before_post",
+                    "title": "暂存发票必须先释放再过账",
+                    "severity": "error",
+                    "when": { "entity": "dataset" },
+                    "constraint": { "type": "state_machine" },
+                    "message": "如果发票状态为 PARKED，则不应直接进行 post 或进入付款建议；必须先 release。",
+                    "remediation": "先执行 supplier_invoices/release；如存在三单匹配异常，先处理异常后再 post。",
+                    "tags": ["p2p", "invoice", "parked"]
+                  },
+                  {
+                    "id": "sap_p2p/rule_duplicate_invoice_detection",
+                    "title": "重复发票识别规则（占位）",
+                    "severity": "warn",
+                    "when": { "entity": "dataset" },
+                    "constraint": { "type": "compliance" },
+                    "message": "当同一供应商出现相同 invoice_number（或在容忍度内的近似匹配）时，应提示重复发票风险并人工复核。",
+                    "remediation": "按 supplier_id + invoice_number 做重复候选清单；结合发票日期/金额/参考号做例外与清洗；必要时冻结相关付款。",
+                    "tags": ["p2p", "invoice", "duplicate", "control"]
+                  }
+                ]
+              }
+        fields:
+          - name: supplier_invoice_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoices.supplier_invoice_id
+            description: 发票内部ID
+          - name: invoice_number
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoices.invoice_number
+            description: 发票号
+          - name: status
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoices.status
+            description: 状态（PARKED/POSTED/REVERSED 等）
+          - name: supplier_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoices.supplier_id
+            description: 供应商ID
+          - name: company_code_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoices.company_code_id
+            description: 公司代码ID
+          - name: payment_term_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoices.payment_term_id
+            description: 付款条件ID（占位字段；可关联 payment_terms.payment_term_id）
+          - name: related_purchase_order_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoices.related_purchase_order_id
+            description: 关联 PO ID（占位字段）
+          - name: invoice_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoices.invoice_date
+            description: 发票日期
+            dimension:
+              is_time: true
+          - name: due_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoices.due_date
+            description: 到期日（占位字段；用于逾期付款口径；可由映射层基于付款条件与基准日计算）
+            dimension:
+              is_time: true
+          - name: posting_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoices.posting_date
+            description: 过账日期
+            dimension:
+              is_time: true
+          - name: total_amount
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoices.total_amount
+            description: 发票总金额
+          - name: currency
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoices.currency
+            description: 币种
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoices.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: supplier_invoice_items
+        source: sap.p2p.supplier_invoice_items
+        primary_key: [supplier_invoice_item_id]
+        unique_keys:
+          - [supplier_invoice_item_id]
+        description: 供应商发票行项目（IV Item）
+        ai_context:
+          synonyms: ["发票行", "IV 行项目", "Supplier Invoice Item"]
+        fields:
+          - name: supplier_invoice_item_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_items.supplier_invoice_item_id
+            description: 发票行ID
+          - name: supplier_invoice_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_items.supplier_invoice_id
+            description: 发票头ID
+          - name: item_number
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_items.item_number
+            description: 行号
+          - name: purchase_order_item_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_items.purchase_order_item_id
+            description: 关联 PO Item ID（用于三单匹配）
+          - name: material_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_items.material_id
+            description: 物料ID
+          - name: quantity
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_items.quantity
+            description: 数量
+          - name: unit_of_measure
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_items.unit_of_measure
+            description: 计量单位
+          - name: net_amount
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_items.net_amount
+            description: 金额（占位字段；需明确口径：未税/含税、币种与价格条件；用于三单匹配金额差异分析）
+          - name: currency
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_items.currency
+            description: 币种
+          - name: is_three_way_match_exception
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: >
+                    CASE
+                      WHEN supplier_invoice_items.purchase_order_item_id IS NULL THEN FALSE
+                      WHEN supplier_invoice_items.quantity IS NULL THEN FALSE
+                      WHEN ABS(
+                        supplier_invoice_items.quantity
+                        - COALESCE(
+                            (SELECT purchase_order_items.quantity
+                             FROM purchase_order_items
+                             WHERE purchase_order_items.purchase_order_item_id = supplier_invoice_items.purchase_order_item_id),
+                            0
+                          )
+                      ) > 0 THEN TRUE
+                      WHEN ABS(
+                        supplier_invoice_items.quantity
+                        - COALESCE(
+                            (SELECT SUM(goods_receipt_items.quantity)
+                             FROM goods_receipt_items
+                             WHERE goods_receipt_items.purchase_order_item_id = supplier_invoice_items.purchase_order_item_id),
+                            0
+                          )
+                      ) > 0 THEN TRUE
+                      ELSE FALSE
+                    END
+            description: 是否三单匹配异常（数量口径：IV.qty vs PO.qty 或 IV.qty vs ΣGR.qty；阈值当前为“非零差异”，可在映射层/规则层扩展为容忍度与原因码）
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_items.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      - name: payments
+        source: sap.p2p.payments
+        primary_key: [payment_id]
+        unique_keys:
+          - [payment_id]
+          - [payment_document_number]
+        description: 付款（PoC 级抽象：付款状态/凭证引用）
+        ai_context:
+          synonyms: ["付款", "Payment"]
+        custom_extensions:
+          - vendor_name: COMMON
+            data: |
+              {
+                "namespace": "SAP_P2P",
+                "behavior_layer_version": "0.1",
+                "action_types": [
+                  {
+                    "id": "payments/execute",
+                    "title": "执行付款（占位动作）",
+                    "kind": "command",
+                    "operation": "execute",
+                    "aggregate": "Payment",
+                    "entity_name": "payments",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["supplier_invoice_id"],
+                        "properties": {
+                          "supplier_invoice_id": { "type": "string" },
+                          "payment_date": { "type": "string", "format": "date-time" },
+                          "amount": { "type": "number" },
+                          "currency": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["执行这张发票的付款", "把付款从 Planned 推进到 Executed"],
+                    "tags": ["p2p", "payment", "execute"]
+                  },
+                  {
+                    "id": "payments/cancel",
+                    "title": "撤销付款（占位动作）",
+                    "kind": "command",
+                    "operation": "cancel",
+                    "aggregate": "Payment",
+                    "entity_name": "payments",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["payment_id"],
+                        "properties": {
+                          "payment_id": { "type": "string" },
+                          "reason": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["撤销这笔付款", "取消 payment"],
+                    "tags": ["p2p", "payment", "cancel"]
+                  }
+                ],
+                "rules": []
+              }
+        fields:
+          - name: payment_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payments.payment_id
+            description: 付款内部ID
+          - name: payment_document_number
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payments.payment_document_number
+            description: 付款凭证号
+          - name: status
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payments.status
+            description: 付款状态（Planned/Executed/Cancelled 等）
+          - name: supplier_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payments.supplier_id
+            description: 供应商ID
+          - name: supplier_invoice_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payments.supplier_invoice_id
+            description: 关联发票ID
+          - name: payment_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payments.payment_date
+            description: 付款日期
+            dimension:
+              is_time: true
+          - name: amount
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payments.amount
+            description: 付款金额
+          - name: currency
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payments.currency
+            description: 币种
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: payments.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+
+      # ==========================================================
+      # Diagnostics / Bridge Entity
+      # ==========================================================
+      - name: supplier_invoice_requests
+        source: sap.p2p.supplier_invoice_requests
+        primary_key: [supplier_invoice_request_id]
+        unique_keys:
+          - [supplier_invoice_request_id]
+          - [request_number]
+        description: 供应商发票请求/消息桥接对象（用于“PO 不可开票/流程通信错误”等诊断）
+        ai_context:
+          synonyms: ["发票请求", "Supplier Invoice Request", "不可开票", "流程通信错误"]
+        custom_extensions:
+          - vendor_name: COMMON
+            data: |
+              {
+                "namespace": "SAP_P2P",
+                "behavior_layer_version": "0.1",
+                "action_types": [
+                  {
+                    "id": "supplier_invoice_requests/diagnose_po_not_invoiceable",
+                    "title": "诊断 PO 不可开票原因",
+                    "kind": "query",
+                    "operation": "diagnose",
+                    "aggregate": "SupplierInvoiceRequest",
+                    "entity_name": "supplier_invoice_requests",
+                    "idempotency": "idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["purchase_order_id"],
+                        "properties": {
+                          "purchase_order_id": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["为什么这个 PO 不可开票？", "诊断 PO 不能开票的原因"],
+                    "tags": ["p2p", "diagnostics", "invoiceable"]
+                  }
+                ],
+                "rules": [
+                  {
+                    "id": "sap_p2p/rule_invoice_request_bridge_first",
+                    "title": "不可开票诊断优先检查桥接对象",
+                    "severity": "warn",
+                    "when": { "entity": "dataset" },
+                    "constraint": { "type": "diagnostic" },
+                    "message": "遇到“PO 不可开票/流程通信错误”时，应优先检查 supplier_invoice_requests 的状态与错误码，再进一步给出流程或配置建议。",
+                    "remediation": "先查询 supplier_invoice_requests 记录与 error_code/error_message；再检查科目分配类型（account assignment type）是否适配开票流程。",
+                    "tags": ["p2p", "bridge", "kba"]
+                  }
+                ]
+              }
+        fields:
+          - name: supplier_invoice_request_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_requests.supplier_invoice_request_id
+            description: 请求ID
+          - name: request_number
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_requests.request_number
+            description: 请求号
+          - name: status
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_requests.status
+            description: 状态（Created/Sent/Failed/Resolved 等）
+          - name: purchase_order_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_requests.purchase_order_id
+            description: 关联 PO ID
+          - name: supplier_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_requests.supplier_id
+            description: 供应商ID
+          - name: company_code_id
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_requests.company_code_id
+            description: 公司代码ID
+          - name: error_code
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_requests.error_code
+            description: 错误码
+          - name: error_message
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_requests.error_message
+            description: 错误信息
+          - name: created_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_requests.created_date
+            description: 创建日期
+            dimension:
+              is_time: true
+          - name: last_updated_date
+            expression:
+              dialects:
+                - dialect: ANSI_SQL
+                  expression: supplier_invoice_requests.last_updated_date
+            description: 最后更新时间
+            dimension:
+              is_time: true
+
+    relationships:
+      # Header-Item layering
+      - name: purchase_requisition_items_to_header
+        from: purchase_requisition_items
+        to: purchase_requisitions
+        from_columns: [purchase_requisition_id]
+        to_columns: [purchase_requisition_id]
+        ai_context:
+          synonyms: ["PR 行到头"]
+
+      - name: purchase_order_items_to_header
+        from: purchase_order_items
+        to: purchase_orders
+        from_columns: [purchase_order_id]
+        to_columns: [purchase_order_id]
+        ai_context:
+          synonyms: ["PO 行到头"]
+
+      - name: po_item_account_assignments_to_po_item
+        from: purchase_order_item_account_assignments
+        to: purchase_order_items
+        from_columns: [purchase_order_item_id]
+        to_columns: [purchase_order_item_id]
+        ai_context:
+          synonyms: ["科目分配到 PO 行"]
+
+      - name: goods_receipt_items_to_header
+        from: goods_receipt_items
+        to: goods_receipts
+        from_columns: [goods_receipt_id]
+        to_columns: [goods_receipt_id]
+
+      - name: gr_ir_open_items_to_goods_receipts
+        from: gr_ir_open_items
+        to: goods_receipts
+        from_columns: [goods_receipt_id]
+        to_columns: [goods_receipt_id]
+
+      - name: gr_ir_open_items_to_po_items
+        from: gr_ir_open_items
+        to: purchase_order_items
+        from_columns: [purchase_order_item_id]
+        to_columns: [purchase_order_item_id]
+
+      - name: gr_ir_open_items_to_suppliers
+        from: gr_ir_open_items
+        to: suppliers
+        from_columns: [supplier_id]
+        to_columns: [supplier_id]
+
+      - name: gr_ir_open_items_to_company_codes
+        from: gr_ir_open_items
+        to: company_codes
+        from_columns: [company_code_id]
+        to_columns: [company_code_id]
+
+      - name: supplier_invoice_items_to_header
+        from: supplier_invoice_items
+        to: supplier_invoices
+        from_columns: [supplier_invoice_id]
+        to_columns: [supplier_invoice_id]
+
+      - name: purchase_orders_to_purchase_requisitions
+        from: purchase_orders
+        to: purchase_requisitions
+        from_columns: [source_purchase_requisition_id]
+        to_columns: [purchase_requisition_id]
+
+      - name: purchase_requisition_items_to_materials
+        from: purchase_requisition_items
+        to: materials
+        from_columns: [material_id]
+        to_columns: [material_id]
+
+      - name: purchase_order_items_to_materials
+        from: purchase_order_items
+        to: materials
+        from_columns: [material_id]
+        to_columns: [material_id]
+
+      - name: goods_receipt_items_to_materials
+        from: goods_receipt_items
+        to: materials
+        from_columns: [material_id]
+        to_columns: [material_id]
+
+      - name: supplier_invoice_items_to_materials
+        from: supplier_invoice_items
+        to: materials
+        from_columns: [material_id]
+        to_columns: [material_id]
+
+      # Documents -> Supplier / Org
+      - name: purchase_requisitions_to_suppliers
+        from: purchase_requisitions
+        to: suppliers
+        from_columns: [supplier_id]
+        to_columns: [supplier_id]
+
+      - name: purchase_requisitions_to_users
+        from: purchase_requisitions
+        to: users
+        from_columns: [created_by_user_id]
+        to_columns: [user_id]
+
+      - name: purchase_orders_to_suppliers
+        from: purchase_orders
+        to: suppliers
+        from_columns: [supplier_id]
+        to_columns: [supplier_id]
+
+      - name: goods_receipts_to_suppliers
+        from: goods_receipts
+        to: suppliers
+        from_columns: [supplier_id]
+        to_columns: [supplier_id]
+
+      - name: goods_receipts_to_company_codes
+        from: goods_receipts
+        to: company_codes
+        from_columns: [company_code_id]
+        to_columns: [company_code_id]
+
+      - name: goods_receipts_to_plants
+        from: goods_receipts
+        to: plants
+        from_columns: [plant_id]
+        to_columns: [plant_id]
+
+      - name: supplier_invoices_to_suppliers
+        from: supplier_invoices
+        to: suppliers
+        from_columns: [supplier_id]
+        to_columns: [supplier_id]
+
+      - name: supplier_invoices_to_company_codes
+        from: supplier_invoices
+        to: company_codes
+        from_columns: [company_code_id]
+        to_columns: [company_code_id]
+
+      - name: purchase_requisitions_to_company_codes
+        from: purchase_requisitions
+        to: company_codes
+        from_columns: [company_code_id]
+        to_columns: [company_code_id]
+
+      - name: purchase_orders_to_company_codes
+        from: purchase_orders
+        to: company_codes
+        from_columns: [company_code_id]
+        to_columns: [company_code_id]
+
+      - name: purchase_requisitions_to_plants
+        from: purchase_requisitions
+        to: plants
+        from_columns: [plant_id]
+        to_columns: [plant_id]
+
+      - name: purchase_order_items_to_plants
+        from: purchase_order_items
+        to: plants
+        from_columns: [plant_id]
+        to_columns: [plant_id]
+
+      - name: purchase_requisitions_to_purchasing_organizations
+        from: purchase_requisitions
+        to: purchasing_organizations
+        from_columns: [purchasing_org_id]
+        to_columns: [purchasing_org_id]
+
+      - name: purchase_orders_to_purchasing_organizations
+        from: purchase_orders
+        to: purchasing_organizations
+        from_columns: [purchasing_org_id]
+        to_columns: [purchasing_org_id]
+
+      - name: purchase_requisitions_to_purchasing_groups
+        from: purchase_requisitions
+        to: purchasing_groups
+        from_columns: [purchasing_group_id]
+        to_columns: [purchasing_group_id]
+
+      - name: purchase_orders_to_purchasing_groups
+        from: purchase_orders
+        to: purchasing_groups
+        from_columns: [purchasing_group_id]
+        to_columns: [purchasing_group_id]
+
+      - name: materials_to_material_groups
+        from: materials
+        to: material_groups
+        from_columns: [material_group_id]
+        to_columns: [material_group_id]
+
+      - name: purchase_orders_to_payment_terms
+        from: purchase_orders
+        to: payment_terms
+        from_columns: [payment_terms]
+        to_columns: [payment_terms_code]
+
+      - name: supplier_invoices_to_payment_terms
+        from: supplier_invoices
+        to: payment_terms
+        from_columns: [payment_term_id]
+        to_columns: [payment_term_id]
+
+      - name: purchasing_info_records_to_suppliers
+        from: purchasing_info_records
+        to: suppliers
+        from_columns: [supplier_id]
+        to_columns: [supplier_id]
+
+      - name: purchasing_info_records_to_materials
+        from: purchasing_info_records
+        to: materials
+        from_columns: [material_id]
+        to_columns: [material_id]
+
+      - name: purchasing_info_records_to_plants
+        from: purchasing_info_records
+        to: plants
+        from_columns: [plant_id]
+        to_columns: [plant_id]
+
+      # Org integrity (Plant -> CompanyCode)
+      - name: plants_to_company_codes
+        from: plants
+        to: company_codes
+        from_columns: [company_code_id]
+        to_columns: [company_code_id]
+
+      # 3-way match joins (placeholder foreign keys)
+      - name: goods_receipt_items_to_po_items
+        from: goods_receipt_items
+        to: purchase_order_items
+        from_columns: [purchase_order_item_id]
+        to_columns: [purchase_order_item_id]
+        ai_context:
+          synonyms: ["GR 行关联 PO 行", "三单匹配（GR→PO）"]
+
+      - name: supplier_invoice_items_to_po_items
+        from: supplier_invoice_items
+        to: purchase_order_items
+        from_columns: [purchase_order_item_id]
+        to_columns: [purchase_order_item_id]
+        ai_context:
+          synonyms: ["IV 行关联 PO 行", "三单匹配（IV→PO）"]
+
+      # Payment + Bridge
+      - name: payments_to_supplier_invoices
+        from: payments
+        to: supplier_invoices
+        from_columns: [supplier_invoice_id]
+        to_columns: [supplier_invoice_id]
+
+      - name: payments_to_suppliers
+        from: payments
+        to: suppliers
+        from_columns: [supplier_id]
+        to_columns: [supplier_id]
+
+      - name: supplier_invoice_requests_to_purchase_orders
+        from: supplier_invoice_requests
+        to: purchase_orders
+        from_columns: [purchase_order_id]
+        to_columns: [purchase_order_id]
+
+      - name: supplier_invoice_requests_to_suppliers
+        from: supplier_invoice_requests
+        to: suppliers
+        from_columns: [supplier_id]
+        to_columns: [supplier_id]
+
+    metrics:
+      - name: pr_count
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: COUNT(DISTINCT purchase_requisitions.purchase_requisition_id)
+        description: 请购单数量
+        ai_context:
+          synonyms: ["PR 数量", "请购数量"]
+
+      - name: po_count
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: COUNT(DISTINCT purchase_orders.purchase_order_id)
+        description: 采购订单数量
+        ai_context:
+          synonyms: ["PO 数量", "采购订单数量"]
+
+      - name: gr_count
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: COUNT(DISTINCT goods_receipts.goods_receipt_id)
+        description: 收货单数量
+        ai_context:
+          synonyms: ["GR 数量", "收货数量"]
+
+      - name: invoice_count
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: COUNT(DISTINCT supplier_invoices.supplier_invoice_id)
+        description: 供应商发票数量
+        ai_context:
+          synonyms: ["发票数量", "IV 数量"]
+
+      - name: parked_invoice_rate
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: SUM(CASE WHEN supplier_invoices.status = 'PARKED' THEN 1 ELSE 0 END) / NULLIF(COUNT(DISTINCT supplier_invoices.supplier_invoice_id), 0)
+        description: 暂存发票占比（parked invoice rate）
+        ai_context:
+          synonyms: ["暂存发票占比", "parked invoice rate"]
+
+      - name: three_way_match_exception_count
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: SUM(CASE WHEN supplier_invoice_items.is_three_way_match_exception THEN 1 ELSE 0 END)
+        description: 三单匹配异常数量（口径：IV 行级字段 is_three_way_match_exception）
+        ai_context:
+          synonyms: ["三单匹配异常", "three way match exception"]
+
+      - name: gr_ir_open_amount
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: SUM(gr_ir_open_items.open_amount)
+        description: GR/IR 未清金额（口径：ΣGR/IR open items 的 open_amount）
+        ai_context:
+          synonyms: ["GR/IR 未清金额", "GRIR open amount"]
+
+      - name: pr_to_po_cycle_time_days
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: AVG(purchase_orders.created_date - purchase_requisitions.created_date)
+        description: 从 PR 创建到 PO 创建的平均周期（天；口径：PO.created_date - PR.created_date，通过 purchase_orders_to_purchase_requisitions 关联）
+        ai_context:
+          synonyms: ["PR 到 PO 周期", "请购到下单周期"]
+
+      - name: invoice_to_pay_cycle_days
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: AVG(payments.payment_date - supplier_invoices.invoice_date)
+        description: 发票到付款的平均周期（天；依赖 payments↔supplier_invoices 关联）
+        ai_context:
+          synonyms: ["发票到付款周期", "invoice to pay cycle"]
+
+      - name: overdue_payment_rate
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: SUM(CASE WHEN payments.payment_date > supplier_invoices.due_date THEN 1 ELSE 0 END) / NULLIF(COUNT(DISTINCT payments.payment_id), 0)
+        description: 逾期付款率（占位：依赖 supplier_invoices.due_date 口径由映射层补齐）
+        ai_context:
+          synonyms: ["逾期付款率", "overdue payment rate"]
+
+      - name: duplicate_invoice_count
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: COUNT(DISTINCT supplier_invoices.supplier_invoice_id) - COUNT(DISTINCT (supplier_invoices.supplier_id || ':' || supplier_invoices.invoice_number))
+        description: 重复发票数量候选口径（同供应商 invoice_number 去重后的差值；需结合例外与清洗规则）
+        ai_context:
+          synonyms: ["重复发票数量", "duplicate invoice count"]
+
+      - name: blocked_vendor_po_count
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: COUNT(DISTINCT CASE WHEN suppliers.status = 'Blocked' THEN purchase_orders.purchase_order_id END)
+        description: 阻断供应商仍发生 PO 的数量（口径：按 purchase_orders 计数，依赖 purchase_orders↔suppliers 关联）
+        ai_context:
+          synonyms: ["阻断供应商PO", "blocked vendor po count"]
+
+      - name: blocked_vendor_invoice_count
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: COUNT(DISTINCT CASE WHEN suppliers.status = 'Blocked' THEN supplier_invoices.supplier_invoice_id END)
+        description: 阻断供应商仍发生发票的数量（口径：按 supplier_invoices 计数，依赖 supplier_invoices↔suppliers 关联）
+        ai_context:
+          synonyms: ["阻断供应商发票", "blocked vendor invoice count"]
+
+      - name: blocked_vendor_payment_count
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: COUNT(DISTINCT CASE WHEN suppliers.status = 'Blocked' THEN payments.payment_id END)
+        description: 阻断供应商仍发生付款的数量（口径：按 payments 计数，依赖 payments↔suppliers 关联）
+        ai_context:
+          synonyms: ["阻断供应商付款", "blocked vendor payment count"]
+
+      - name: blocked_vendor_transaction_count
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: COUNT(DISTINCT CASE WHEN suppliers.status = 'Blocked' THEN purchase_orders.purchase_order_id END) + COUNT(DISTINCT CASE WHEN suppliers.status = 'Blocked' THEN supplier_invoices.supplier_invoice_id END) + COUNT(DISTINCT CASE WHEN suppliers.status = 'Blocked' THEN payments.payment_id END)
+        description: 阻断供应商交易次数（组合口径：阻断供应商的 PO+IV+Payment 计数之和；如需去重需在分析层定义统一 transaction_id）
+        ai_context:
+          synonyms: ["阻断供应商交易次数", "blocked vendor transaction count"]

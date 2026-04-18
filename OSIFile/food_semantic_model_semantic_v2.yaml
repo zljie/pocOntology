@@ -3,8 +3,8 @@
 version: "0.1.1"
 
 semantic_model:
-  - name: restaurant_management_model_semantic_v2
-    description: 餐饮管理系统语义模型（点餐服务/菜品管理/原材料与库存/成本核算/会员运营/活动营销/经营分析）
+  - name: restaurant_management_model_semantic_v3
+    description: 餐饮管理系统语义模型（点餐服务/菜品管理/原材料与库存/成本核算/会员运营/活动营销/经营分析；v3新增：临期消耗运营场景动作）
     ai_context:
       instructions: "用于餐饮经营分析与问答。围绕订单明细（order_items）做聚合，按门店、菜品、品类、时间、渠道、活动等维度切分。若用户只说“销量/营收”，默认指已支付订单；如需退款/取消需明确说明。涉及成本/库存/券/套餐口径，优先引用本模型的字段与规则说明，再给出结论。"
       synonyms:
@@ -391,6 +391,57 @@ semantic_model:
           synonyms:
             - "菜品"
             - "菜单"
+        custom_extensions:
+          - vendor_name: COMMON
+            data: |
+              {
+                "namespace": "RESTAURANT",
+                "behavior_layer_version": "0.2",
+                "action_types": [
+                  {
+                    "id": "dishes/recommend_for_expiring_ingredients",
+                    "title": "推荐用于消耗临期原材料的菜品 TopN",
+                    "kind": "query",
+                    "operation": "rank",
+                    "aggregate": "MenuAnalytics",
+                    "entity_name": "dishes",
+                    "idempotency": "idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "as_of_time": { "type": "string", "format": "date-time" },
+                          "store_id": { "type": "string" },
+                          "expiry_within_days": { "type": "integer", "default": 7 },
+                          "lookback_days": { "type": "integer", "default": 30 },
+                          "top_n": { "type": "integer", "default": 10 },
+                          "strategy": {
+                            "type": "string",
+                            "enum": ["THEORETICAL_USAGE", "EXPECTED_USAGE_7D"],
+                            "default": "EXPECTED_USAGE_7D"
+                          }
+                        }
+                      }
+                    },
+                    "examples": ["临期原材料很多，推荐最能消耗临期原料的菜品Top5", "按近7天销量与配方用量综合推荐临期消耗菜品Top10"],
+                    "tags": ["库存", "临期", "菜品", "推荐"]
+                  }
+                ],
+                "rules": [
+                  {
+                    "id": "dishes/recommend_for_expiring_ingredients/assumption",
+                    "title": "推荐口径说明",
+                    "severity": "info",
+                    "when": { "entity": "dataset" },
+                    "constraint": { "type": "definition" },
+                    "message": "推荐结果通常基于配方（dish_recipe_items）与临期批次余额（inventory_lots/inventory_lot_balances）。若选择 EXPECTED_USAGE_7D 策略，还会结合近7天菜品销量（order_items）估算可消耗量。",
+                    "remediation": "如无配方或库存批次数据，请先补齐 dish_recipe_items 与 inventory_lots/inventory_lot_balances。",
+                    "tags": ["口径", "临期", "配方", "销量"]
+                  }
+                ]
+              }
         fields:
           - name: dish_id
             expression:
@@ -1181,6 +1232,52 @@ semantic_model:
         description: 会员关系（顾客当前会员状态/等级）
         ai_context:
           synonyms: ["会员关系", "会员档案"]
+        custom_extensions:
+          - vendor_name: COMMON
+            data: |
+              {
+                "namespace": "RESTAURANT",
+                "behavior_layer_version": "0.2",
+                "action_types": [
+                  {
+                    "id": "customer_memberships/upgrade_tier",
+                    "title": "提升会员等级",
+                    "kind": "command",
+                    "operation": "update",
+                    "aggregate": "Membership",
+                    "entity_name": "customer_memberships",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["customer_id", "target_tier_id", "effective_time"],
+                        "properties": {
+                          "customer_id": { "type": "string" },
+                          "target_tier_id": { "type": "string" },
+                          "effective_time": { "type": "string", "format": "date-time" },
+                          "reason": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["把该会员升级到黄金会员", "将积分Top10会员统一提升一个等级并立即生效"],
+                    "tags": ["会员", "等级", "运营"]
+                  }
+                ],
+                "rules": [
+                  {
+                    "id": "customer_memberships/upgrade_tier/precondition",
+                    "title": "升级前置校验",
+                    "severity": "warn",
+                    "when": { "entity": "dataset" },
+                    "constraint": { "type": "state_machine" },
+                    "message": "升级会员等级前应校验会员状态为 Active，并确保目标 tier_id 在 membership_tiers 中存在。",
+                    "remediation": "若状态非 Active，请先恢复会员状态；若 tier 不存在，请先维护 membership_tiers。",
+                    "tags": ["校验", "会员", "等级"]
+                  }
+                ]
+              }
         fields:
           - name: customer_membership_id
             expression:
@@ -1274,6 +1371,55 @@ semantic_model:
         description: 优惠券模板（权益定义：免费菜/满减等）
         ai_context:
           synonyms: ["优惠券", "券模板", "免费券"]
+        custom_extensions:
+          - vendor_name: COMMON
+            data: |
+              {
+                "namespace": "RESTAURANT",
+                "behavior_layer_version": "0.2",
+                "action_types": [
+                  {
+                    "id": "coupons/create_free_dish_template",
+                    "title": "创建免费菜品券模板",
+                    "kind": "command",
+                    "operation": "create",
+                    "aggregate": "CouponTemplate",
+                    "entity_name": "coupons",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["coupon_code", "free_dish_id", "valid_from", "valid_to"],
+                        "properties": {
+                          "coupon_code": { "type": "string" },
+                          "promotion_id": { "type": "string" },
+                          "free_dish_id": { "type": "string" },
+                          "valid_from": { "type": "string", "format": "date-time" },
+                          "valid_to": { "type": "string", "format": "date-time" },
+                          "is_active": { "type": "boolean", "default": true },
+                          "reason": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["创建一张免费菜券模板：免费宫保鸡丁，有效期7天", "为临期消耗活动创建免费菜品券模板"],
+                    "tags": ["券模板", "发券", "运营"]
+                  }
+                ],
+                "rules": [
+                  {
+                    "id": "coupons/create_free_dish_template/semantic",
+                    "title": "券模板语义约束",
+                    "severity": "warn",
+                    "when": { "entity": "dataset" },
+                    "constraint": { "type": "definition" },
+                    "message": "该动作创建的券模板默认语义为 benefit_type=FREE_DISH 且 free_dish_id 必填。",
+                    "remediation": "如需满减等其他券类型，请新增对应的 create 动作或扩展 benefit_type。",
+                    "tags": ["口径", "券模板"]
+                  }
+                ]
+              }
         fields:
           - name: coupon_id
             expression:
@@ -1607,6 +1753,53 @@ semantic_model:
         description: 套餐权益（关联送菜券/免费菜等）
         ai_context:
           synonyms: ["套餐权益", "权益"]
+        custom_extensions:
+          - vendor_name: COMMON
+            data: |
+              {
+                "namespace": "RESTAURANT",
+                "behavior_layer_version": "0.2",
+                "action_types": [
+                  {
+                    "id": "membership_package_benefits/add_coupon_benefit",
+                    "title": "为会员套餐添加券类权益（含最低消费/基本成本门槛）",
+                    "kind": "command",
+                    "operation": "create",
+                    "aggregate": "MembershipPackage",
+                    "entity_name": "membership_package_benefits",
+                    "idempotency": "non_idempotent",
+                    "applies_to": { "entity": "dataset" },
+                    "io_schema": {
+                      "input_schema": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["package_id", "coupon_id", "min_spend_amount"],
+                        "properties": {
+                          "package_id": { "type": "string" },
+                          "coupon_id": { "type": "string" },
+                          "min_spend_amount": { "type": "number" },
+                          "benefit_type": { "type": "string", "default": "COUPON" },
+                          "reason": { "type": "string" }
+                        }
+                      }
+                    },
+                    "examples": ["为某会员套餐绑定免费菜券，并设置最低消费=该菜品基本成本", "给新建套餐增加券权益（门槛满足即可使用）"],
+                    "tags": ["会员", "套餐", "权益", "券"]
+                  }
+                ],
+                "rules": [
+                  {
+                    "id": "membership_package_benefits/add_coupon_benefit/constraint",
+                    "title": "权益约束说明",
+                    "severity": "warn",
+                    "when": { "entity": "dataset" },
+                    "constraint": { "type": "relationship_integrity" },
+                    "message": "当 benefit_type=COUPON 时，coupon_id 必填；min_spend_amount 建议参考菜品理论成本（dish_theoretical_unit_cost）或业务设定的基本成本口径。",
+                    "remediation": "如需 FREE_DISH 直接挂 free_dish_id，请扩展对应动作或使用 coupons_to_free_dishes/字段组合实现。",
+                    "tags": ["口径", "套餐", "权益"]
+                  }
+                ]
+              }
         fields:
           - name: package_benefit_id
             expression:

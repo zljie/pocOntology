@@ -64,8 +64,16 @@ function generateLayout(objectTypes: ObjectType[]): Record<string, { x: number; 
 
 function OntologyCanvasMain() {
   const { objectTypes, linkTypes, addLinkType, addObjectType, neo4jProject, scenario } = useOntologyStore();
-  const { selectedNodeId, semanticHighlightedNodeIds, selectNode, selectEdge, selectObjectType, selectLinkType, clearAll } =
-    useSelectionStore();
+  const {
+    selectedNodeId,
+    semanticHighlightedNodeIds,
+    semanticHighlightedEdgeIds,
+    selectNode,
+    selectEdge,
+    selectObjectType,
+    selectLinkType,
+    clearAll,
+  } = useSelectionStore();
   const { showMinimap, showGrid, canvasViewMode, openRightPanel, workMode, setCanvasViewMode } = useUIStore();
 
   React.useEffect(() => {
@@ -100,9 +108,10 @@ function OntologyCanvasMain() {
         linkType: lt,
         cardinality: lt.cardinality,
         label: lt.displayName,
+        highlighted: semanticHighlightedEdgeIds.includes(lt.id),
       },
     }));
-  }, [linkTypes]);
+  }, [linkTypes, semanticHighlightedEdgeIds]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -165,10 +174,11 @@ function OntologyCanvasMain() {
         linkType: lt,
         cardinality: lt.cardinality,
         label: lt.displayName,
+        highlighted: semanticHighlightedEdgeIds.includes(lt.id),
       },
     }));
     setEdges(newEdges);
-  }, [linkTypes, setEdges]);
+  }, [linkTypes, semanticHighlightedEdgeIds, setEdges]);
 
   const onConnect = useCallback(
     (params: Connection) => {

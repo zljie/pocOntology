@@ -10,6 +10,7 @@ import { useConsultingStore, useOntologyStore, useSelectionStore } from "@/store
 import { ChangeConfirmDialog, type ChangeConfirmSection } from "@/components/consulting/change-confirm-dialog";
 import { toPascalCase } from "@/lib/utils";
 import type { Cardinality } from "@/lib/types/ontology";
+import { CASE_PLAYBOOKS } from "@/lib/case-playbook/scenarios";
 
 interface Message {
   role: "user" | "assistant";
@@ -57,7 +58,17 @@ export function ConsultingChatPanel() {
   const confirmActionsRef = React.useRef<Map<string, () => Promise<void> | void>>(new Map());
   const createdObjectTypeByNameRef = React.useRef<Map<string, string>>(new Map());
 
-  const { domains, selectedDomainId, addDomain, updateDomain, toggleEntityInDomain, setEntityScale, selectDomain } = useConsultingStore();
+  const {
+    domains,
+    selectedDomainId,
+    addDomain,
+    updateDomain,
+    toggleEntityInDomain,
+    setEntityScale,
+    selectDomain,
+    casePlaybook,
+    setDraftMessage,
+  } = useConsultingStore();
   const domain = React.useMemo(() => domains.find((d) => d.id === selectedDomainId) || null, [domains, selectedDomainId]);
   const { objectTypes, linkTypes, actionTypes, dataFlows, businessRules, aiModels, analysisInsights, scenario, addObjectType, addLinkType } =
     useOntologyStore();
@@ -95,6 +106,26 @@ export function ConsultingChatPanel() {
         aiModels,
         analysisInsights,
       },
+      caseContext: (() => {
+        const selectedCaseId = casePlaybook?.selectedCaseId;
+        const selectedStepId = casePlaybook?.selectedStepId;
+        if (!selectedCaseId || !selectedStepId) return null;
+        const c = CASE_PLAYBOOKS.find((x) => x.caseId === selectedCaseId);
+        const step = c?.steps.find((s) => s.stepId === selectedStepId);
+        if (!c || !step) return null;
+        const edited = casePlaybook?.editedIntentTextByStepId?.[selectedStepId] || "";
+        return {
+          caseId: c.caseId,
+          caseTitle: c.title,
+          stepId: step.stepId,
+          stepTitle: step.title,
+          intentText: (edited || step.intentText || "").trim(),
+          actionId: step.actionId,
+          relatedDatasetNames: step.relatedDatasetNames,
+          relatedMetricNames: step.relatedMetricNames || [],
+          notes: step.notes || "",
+        };
+      })(),
     };
   }, [
     scenario,
@@ -108,7 +139,15 @@ export function ConsultingChatPanel() {
     businessRules,
     aiModels,
     analysisInsights,
+    casePlaybook,
   ]);
+
+  React.useEffect(() => {
+    const draft = casePlaybook?.draftMessage || "";
+    if (!draft.trim()) return;
+    setInput((prev) => (prev.trim() ? prev : draft));
+    setDraftMessage("");
+  }, [casePlaybook?.draftMessage, setDraftMessage]);
 
   const handleSend = async () => {
     if (!input.trim()) return;

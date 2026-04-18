@@ -7,9 +7,10 @@ import { PropertyEditorPanel } from "@/components/property-editor/property-edito
 import { KineticEditorPanel } from "@/components/property-editor/kinetic-editor-panel";
 import { DynamicEditorPanel } from "@/components/property-editor/dynamic-editor-panel";
 import { RightSemanticQueryPanel } from "@/components/semantic-query/right-semantic-query-panel";
+import { useUIStore } from "@/stores";
 
 export function ConsultingRightPanel() {
-  const [tab, setTab] = React.useState<"consulting" | "details">("consulting");
+  const { consultingRightTab: tab, setConsultingRightTab: setTab } = useUIStore();
 
   return (
     <div className="h-full flex flex-col">
@@ -41,4 +42,3 @@ export function ConsultingRightPanel() {
     </div>
   );
 }
-

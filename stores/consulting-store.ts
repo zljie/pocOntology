@@ -13,15 +13,27 @@ export interface BusinessDomainPlan {
   entityScales: Record<string, EntityScale>;
 }
 
+export interface CasePlaybookState {
+  selectedCaseId: string | null;
+  selectedStepId: string | null;
+  editedIntentTextByStepId: Record<string, string>;
+  draftMessage: string;
+}
+
 interface ConsultingStore {
   domains: BusinessDomainPlan[];
   selectedDomainId: string | null;
+  casePlaybook: CasePlaybookState;
   selectDomain: (id: string | null) => void;
   addDomain: (name: string) => string;
   updateDomain: (id: string, patch: Partial<Pick<BusinessDomainPlan, "name" | "description">>) => void;
   removeDomain: (id: string) => void;
   toggleEntityInDomain: (domainId: string, objectTypeId: string) => void;
   setEntityScale: (domainId: string, objectTypeId: string, scale: EntityScale) => void;
+  selectCase: (caseId: string | null) => void;
+  selectCaseStep: (stepId: string | null) => void;
+  updateCaseStepIntent: (stepId: string, intentText: string) => void;
+  setDraftMessage: (message: string) => void;
   clear: () => void;
 }
 
@@ -36,6 +48,12 @@ export const useConsultingStore = create<ConsultingStore>()(
     (set, get) => ({
       domains: [],
       selectedDomainId: null,
+      casePlaybook: {
+        selectedCaseId: null,
+        selectedStepId: null,
+        editedIntentTextByStepId: {},
+        draftMessage: "",
+      },
 
       selectDomain: (id) => set({ selectedDomainId: id }),
 
@@ -112,10 +130,52 @@ export const useConsultingStore = create<ConsultingStore>()(
           ),
         })),
 
+      selectCase: (caseId) =>
+        set((state) => ({
+          casePlaybook: {
+            ...state.casePlaybook,
+            selectedCaseId: caseId,
+            selectedStepId: null,
+          },
+        })),
+
+      selectCaseStep: (stepId) =>
+        set((state) => ({
+          casePlaybook: {
+            ...state.casePlaybook,
+            selectedStepId: stepId,
+          },
+        })),
+
+      updateCaseStepIntent: (stepId, intentText) =>
+        set((state) => ({
+          casePlaybook: {
+            ...state.casePlaybook,
+            editedIntentTextByStepId: {
+              ...state.casePlaybook.editedIntentTextByStepId,
+              [stepId]: intentText,
+            },
+          },
+        })),
+
+      setDraftMessage: (message) =>
+        set((state) => ({
+          casePlaybook: {
+            ...state.casePlaybook,
+            draftMessage: message,
+          },
+        })),
+
       clear: () =>
         set({
           domains: [],
           selectedDomainId: null,
+          casePlaybook: {
+            selectedCaseId: null,
+            selectedStepId: null,
+            editedIntentTextByStepId: {},
+            draftMessage: "",
+          },
         }),
     }),
     {
@@ -123,6 +183,7 @@ export const useConsultingStore = create<ConsultingStore>()(
       partialize: (state) => ({
         domains: state.domains,
         selectedDomainId: state.selectedDomainId,
+        casePlaybook: state.casePlaybook,
       }),
     }
   )

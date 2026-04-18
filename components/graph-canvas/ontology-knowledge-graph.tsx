@@ -53,6 +53,7 @@ export function OntologyKnowledgeGraph() {
     selectedNodeId,
     selectedEdgeId,
     semanticHighlightedNodeIds,
+    semanticHighlightedEdgeIds,
     selectNode,
     selectEdge,
     selectObjectType,
@@ -493,6 +494,7 @@ export function OntologyKnowledgeGraph() {
       })
       .attr("stroke", (d) => {
         if (selectedEdgeId === d.id) return GRAPH_THEME.edge.selectedStroke;
+        if (semanticHighlightedEdgeIds.includes(d.id)) return "#c4b5fd";
         if (hasFocus && focus?.edgeIds.has(d.id) && selectedNodeId) {
           if (focus.outboundEdgeIds.has(d.id)) return GRAPH_THEME.edge.outboundStroke;
           if (focus.inboundEdgeIds.has(d.id)) return GRAPH_THEME.edge.inboundStroke;
@@ -503,11 +505,13 @@ export function OntologyKnowledgeGraph() {
       })
       .attr("stroke-width", (d) => {
         if (selectedEdgeId === d.id) return 3.2;
+        if (semanticHighlightedEdgeIds.includes(d.id)) return 2.4;
         if (hasFocus && focus?.edgeIds.has(d.id)) return 2.2;
         return 1.4;
       })
       .attr("stroke-dasharray", (d) => {
         if (!hasFocus) return null;
+        if (semanticHighlightedEdgeIds.includes(d.id)) return null;
         return focus?.edgeIds.has(d.id) ? null : "2,10";
       })
       .attr("marker-end", (d) => {
@@ -527,6 +531,7 @@ export function OntologyKnowledgeGraph() {
       })
       .attr("fill", (d) => {
         if (selectedEdgeId === d.id) return GRAPH_THEME.edge.selectedStroke;
+        if (semanticHighlightedEdgeIds.includes(d.id)) return "#c4b5fd";
         if (hasFocus && focus?.edgeIds.has(d.id) && selectedNodeId) {
           if (focus.outboundEdgeIds.has(d.id)) return GRAPH_THEME.edge.outboundStroke;
           if (focus.inboundEdgeIds.has(d.id)) return GRAPH_THEME.edge.inboundStroke;
@@ -534,7 +539,7 @@ export function OntologyKnowledgeGraph() {
         }
         return GRAPH_THEME.edge.label;
       });
-  }, [selectedNodeId, selectedEdgeId, semanticHighlightedNodeIds, radiusByNodeId, focus]);
+  }, [selectedNodeId, selectedEdgeId, semanticHighlightedNodeIds, semanticHighlightedEdgeIds, radiusByNodeId, focus]);
 
   useEffect(() => {
     const simulation = simulationRef.current;

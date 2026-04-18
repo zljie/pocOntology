@@ -19,6 +19,7 @@ interface SelectionStore {
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
   semanticHighlightedNodeIds: string[];
+  semanticHighlightedEdgeIds: string[];
   semanticQueryPreview:
     | {
         query: string;
@@ -58,6 +59,8 @@ interface SelectionStore {
   selectEdge: (id: string | null) => void;
   setSemanticHighlightedNodeIds: (ids: string[]) => void;
   clearSemanticHighlightedNodeIds: () => void;
+  setSemanticHighlightedEdgeIds: (ids: string[]) => void;
+  clearSemanticHighlightedEdgeIds: () => void;
   setSemanticQueryPreview: (preview: {
     query: string;
     generatedAt: string;
@@ -99,6 +102,7 @@ export const useSelectionStore = create<SelectionStore>((set) => ({
   selectedNodeId: null,
   selectedEdgeId: null,
   semanticHighlightedNodeIds: [],
+  semanticHighlightedEdgeIds: [],
   semanticQueryPreview: null,
   semanticParsedResult: null,
   semanticResourcePreview: null,
@@ -228,6 +232,16 @@ export const useSelectionStore = create<SelectionStore>((set) => ({
       semanticHighlightedNodeIds: [],
     }),
 
+  setSemanticHighlightedEdgeIds: (ids) =>
+    set({
+      semanticHighlightedEdgeIds: ids,
+    }),
+
+  clearSemanticHighlightedEdgeIds: () =>
+    set({
+      semanticHighlightedEdgeIds: [],
+    }),
+
   setSemanticQueryPreview: (preview) =>
     set({
       semanticQueryPreview: preview,
@@ -259,6 +273,7 @@ export const useSelectionStore = create<SelectionStore>((set) => ({
       selectedAIModelId: null,
       selectedAnalysisInsightId: null,
       semanticHighlightedNodeIds: [],
+      semanticHighlightedEdgeIds: [],
       semanticQueryPreview: null,
       semanticParsedResult: null,
       semanticResourcePreview: null,
@@ -278,6 +293,7 @@ export const useSelectionStore = create<SelectionStore>((set) => ({
       selectedNodeId: null,
       selectedEdgeId: null,
       semanticHighlightedNodeIds: [],
+      semanticHighlightedEdgeIds: [],
       semanticQueryPreview: null,
       semanticParsedResult: null,
       semanticResourcePreview: null,

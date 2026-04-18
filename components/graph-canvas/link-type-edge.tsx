@@ -18,6 +18,7 @@ interface LinkTypeEdgeData {
   };
   cardinality: Cardinality;
   label: string;
+  highlighted?: boolean;
 }
 
 function LinkTypeEdgeComponent({
@@ -65,7 +66,9 @@ function LinkTypeEdgeComponent({
           "!stroke-[2px]",
           selected
             ? "!stroke-[#5b8def] !stroke-opacity-100"
-            : "!stroke-[#3d3d3d] !stroke-opacity-60"
+            : edgeData?.highlighted
+              ? "!stroke-[#c4b5fd] !stroke-opacity-95"
+              : "!stroke-[#3d3d3d] !stroke-opacity-60"
         )}
         style={{
           strokeDasharray: edgeData?.cardinality === "MANY_TO_MANY" ? "5,5" : undefined,
@@ -86,7 +89,9 @@ function LinkTypeEdgeComponent({
               "px-2 py-1 rounded text-[10px] font-mono transition-colors",
               selected
                 ? "bg-[#5b8def]/20 text-[#5b8def] border border-[#5b8def]/30"
-                : "bg-[#1a1a18] text-[#6b6b6b] border border-[#2d2d2d]"
+                : edgeData?.highlighted
+                  ? "bg-[#7c3aed]/10 text-[#c4b5fd] border border-[#7c3aed]/20"
+                  : "bg-[#1a1a18] text-[#6b6b6b] border border-[#2d2d2d]"
             )}
           >
             <div className="flex items-center gap-1.5">
