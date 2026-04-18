@@ -109,6 +109,35 @@
 
 ***
 
+### \[0044] OSI YAML 本体导入与展示（food + pp v2）
+
+- 用户故事：作为本体建模用户，我希望能把 OSI v0.1.1 的语义模型 YAML（包含 datasets/relationships）导入到当前画布并直接展示为对象节点与关系连线，并在导入时做严格 schema 校验，以便把外部语义模型快速转为可编辑、可推演的本体资产。
+- 验收标准：
+  - [ ] 提供 OSI YAML 导入入口：支持上传多个 .yaml/.yml 文件并触发导入
+  - [ ] 严格校验：OSI Core schema 不通过则拒绝导入并展示错误清单；若存在 behavior-layer 扩展且不合法同样拒绝导入
+  - [ ] 整包替换：导入成功后用导入结果覆盖当前画布本体数据（至少包含 ObjectType/LinkType）
+  - [ ] 画布展示：datasets 显示为 ObjectType 节点；relationships 显示为 LinkType 连线（from→to 映射 MANY_TO_ONE）
+  - [ ] 若当前已选择 Neo4j 项目：导入后执行写入并 reset，使 Neo4j 与画布一致
+- 关联（可选）：OSIFile/spec；OSIFile/food_semantic_model_semantic_v2.yaml；OSIFile/pp_semantic_model_semantic_v2.yaml；app/api/osi/import；components/osi-import；stores/ontology-store.ts；lib/neo4j/client.ts
+- 记录：创建日期 2026-04-17
+
+***
+
+### \[0045] OSI 导入扩展：Action/Rule/Metric 映射到三层本体
+
+- 用户故事：作为本体建模用户，我希望在导入 OSI 模型后，能把 dataset.custom_extensions（behavior-layer）中的 action_types 映射为动势层 ActionType，把 rules 映射为动态层 BusinessRule，并把 semantic_model.metrics 映射为 AnalysisInsight（METRIC），以便导入后即可在三层面板中继续编辑与推演。
+- 验收标准：
+  - [ ] OSI 导入时解析并严格校验 dataset.custom_extensions.data 中的 behavior-layer（action_types/rules），不通过则拒绝导入并展示错误清单
+  - [ ] action_types → ActionType：导入后出现在动势层列表，可点击并在右侧动势面板编辑；默认关联到对应 dataset 的 ObjectType（affectedObjectTypeIds）
+  - [ ] rules → BusinessRule：导入后出现在动态层“业务规则”列表，可点击并在右侧动态面板编辑；规则表达式字段保留结构化信息（when/constraint/message 等）
+  - [ ] metrics → AnalysisInsight：导入后出现在动态层“分析洞察”列表；description 中可查看 metric 的表达式与方言信息
+  - [ ] 导入整包替换仍生效：ObjectType/LinkType/ActionType/BusinessRule/AnalysisInsight 一次性覆盖当前画布本体
+  - [ ] 若当前已选择 Neo4j 项目：导入后 reset 写入 Neo4j（包含新导入的 ActionType/BusinessRule/AnalysisInsight）
+- 关联（可选）：lib/osi/osi-to-metacore.ts；lib/osi/osi-validate.ts；app/api/osi/import；components/osi-import/osi-import-dialog.tsx
+- 记录：创建日期 2026-04-17
+
+***
+
 ### \[0039] 白标建模示例：SAP HCM（抽象本体 + 标准数据库方案）
 
 - 用户故事：作为售前/方案架构师，我希望提供一个可直接复用的 SAP HCM 模块白标示例（抽象对象/关系/动作与数据库设计），以便在售卖与落地讨论中快速对齐业务并进入细化阶段。
@@ -570,4 +599,3 @@
   - [x] 明确“本体配置解析区”与“本体语句解析区”的位置与职责
   - [x] 命名可用于后续 PRD/任务卡沟通（不依赖截图解释）
 - 记录：创建日期 2026-03-25；完成日期 2026-03-25
-

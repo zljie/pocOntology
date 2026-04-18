@@ -19,10 +19,12 @@ export async function upsertMetaToNeo4jClient(params: {
   scenario: string;
   meta: MetaCore;
   reset?: boolean;
+  signal?: AbortSignal;
 }) {
   const res = await fetch("/api/neo4j/upsert-meta", {
     method: "POST",
     headers: { "content-type": "application/json" },
+    signal: params.signal,
     body: JSON.stringify({
       database: params.database,
       scenario: params.scenario,

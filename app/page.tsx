@@ -11,6 +11,7 @@ import { DynamicEditorPanel } from "@/components/property-editor/dynamic-editor-
 import { RightSemanticQueryPanel } from "@/components/semantic-query/right-semantic-query-panel";
 import { ProjectOnboardingRightPanel } from "@/components/project-onboarding/project-onboarding-right-panel";
 import { ImportDialog } from "@/components/proposal-system/import-dialog";
+import { OsiImportDialog } from "@/components/osi-import/osi-import-dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useUIStore } from "@/stores";
 import { BusinessDomainPlannerPanel } from "@/components/consulting/business-domain-planner-panel";
@@ -47,6 +48,7 @@ export default function HomePage() {
           open={showImportDialog}
           onOpenChange={setShowImportDialog}
         />
+        <OsiImportDialog />
       </div>
     </TooltipProvider>
   );

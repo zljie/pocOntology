@@ -67,7 +67,8 @@ export function Header() {
   } = useOntologyStore();
   const { clearAll: clearSelection } = useSelectionStore();
   const { clearAll: clearProposals } = useProposalStore();
-  const { setShowImportDialog, showProposalBanner, workMode, setWorkMode, setCanvasViewMode, openRightPanel, enterProjectOnboarding } = useUIStore();
+  const { setShowImportDialog, setShowOsiImportDialog, showProposalBanner, workMode, setWorkMode, setCanvasViewMode, openRightPanel, enterProjectOnboarding } =
+    useUIStore();
   const { initProjectOnboarding } = useOnboardingStore();
   const [showSemanticQuery, setShowSemanticQuery] = useState(false);
   const [showScenarioSandbox, setShowScenarioSandbox] = useState(false);
@@ -300,6 +301,20 @@ export function Header() {
               </Button>
             </TooltipTrigger>
             <TooltipContent>导入模型</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
+                onClick={() => setShowOsiImportDialog(true)}
+              >
+                <FilePlus className="w-4 h-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>导入 OSI YAML</TooltipContent>
           </Tooltip>
 
           <Tooltip>
