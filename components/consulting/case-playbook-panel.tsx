@@ -59,6 +59,35 @@ function selectBestMetrics(params: { metricNames: string[]; insights: any[] }) {
   return ids;
 }
 
+function buildChatMessage(params: {
+  selectedCase: any;
+  selectedStep: any;
+  effectiveIntent: string;
+}) {
+  const caseId = String(params.selectedCase?.caseId || "");
+  if (caseId === "restaurant-expiring-inventory-to-membership-ops") {
+    return (
+      `目标：为临期原材料构建一套可执行的运营方案，并推演完整链路。\n\n` +
+      `案例：${params.selectedCase.title}\n\n` +
+      `请基于当前本体（datasets/relationships/action_types/rules/metrics）推演该案例，输出：\n` +
+      `1) 关键意图拆解（从 Dashboard 预警开始）\n` +
+      `2) 每一步对应的动作（actionId）+ 输入字段（JSON schema 视角）+ 输出字段（可观测结果）\n` +
+      `3) 每一步用到的本体元素（对象/关系/动作/规则/指标）\n` +
+      `4) 每一步的缺失信息与补全问题（用于继续追问）\n\n` +
+      `当前我在看的步骤：${params.selectedStep.title}（${params.selectedStep.actionId}）\n` +
+      `这一步意图：${params.effectiveIntent || params.selectedStep.intentText}`
+    );
+  }
+
+  return (
+    `案例：${params.selectedCase.title}\n` +
+    `步骤：${params.selectedStep.title}\n` +
+    `动作：${params.selectedStep.actionId}\n\n` +
+    `意图：${params.effectiveIntent || params.selectedStep.intentText}\n\n` +
+    `请帮我：\n- 用更清晰的方式改写这一步意图\n- 指出缺失的信息（输入字段/口径/边界条件）\n- 给出可验证的验收结果（输出字段/可观测指标）`
+  );
+}
+
 export function CasePlaybookPanel() {
   const { casePlaybook, selectCase, selectCaseStep, updateCaseStepIntent, setDraftMessage } = useConsultingStore();
   const { objectTypes, linkTypes, actionTypes, businessRules, analysisInsights } = useOntologyStore();
@@ -115,12 +144,7 @@ export function CasePlaybookPanel() {
 
   const onSendToChat = () => {
     if (!selectedStep) return;
-    const text =
-      `案例：${selectedCase.title}\n` +
-      `步骤：${selectedStep.title}\n` +
-      `动作：${selectedStep.actionId}\n\n` +
-      `意图：${effectiveIntent || selectedStep.intentText}\n\n` +
-      `请帮我：\n- 用更清晰的方式改写这一步意图\n- 指出缺失的信息（输入字段/口径/边界条件）\n- 给出可验证的验收结果（输出字段/可观测指标）`;
+    const text = buildChatMessage({ selectedCase, selectedStep, effectiveIntent });
     setDraftMessage(text);
     openRightPanel();
     setConsultingRightTab("consulting");
@@ -263,4 +287,3 @@ export function CasePlaybookPanel() {
     </div>
   );
 }
-
