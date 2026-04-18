@@ -8,6 +8,7 @@ import { KineticEditorPanel } from "@/components/property-editor/kinetic-editor-
 import { DynamicEditorPanel } from "@/components/property-editor/dynamic-editor-panel";
 import { RightSemanticQueryPanel } from "@/components/semantic-query/right-semantic-query-panel";
 import { useUIStore } from "@/stores";
+import { Button } from "@/components/ui/button";
 
 export function ConsultingRightPanel() {
   const { consultingRightTab: tab, setConsultingRightTab: setTab } = useUIStore();
@@ -20,9 +21,6 @@ export function ConsultingRightPanel() {
             <TabsTrigger value="consulting" className="text-xs">
               AI咨询
             </TabsTrigger>
-            <TabsTrigger value="details" className="text-xs">
-              详情
-            </TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -32,6 +30,15 @@ export function ConsultingRightPanel() {
           <ConsultingChatPanel />
         ) : (
           <>
+            <div className="flex-none p-3 border-b border-[#2d2d2d] bg-[#0d0d0d]">
+              <Button
+                variant="outline"
+                className="bg-[#2d2d2d] border-[#3d3d3d] text-[#a0a0a0] hover:bg-[#3d3d3d]"
+                onClick={() => setTab("consulting")}
+              >
+                返回 AI咨询
+              </Button>
+            </div>
             <PropertyEditorPanel />
             <KineticEditorPanel />
             <DynamicEditorPanel />

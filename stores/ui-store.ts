@@ -66,7 +66,7 @@ export const useUIStore = create<UIStore>()(
         set({ leftPanelWidth: Math.max(280, Math.min(500, width)) }),
 
       setRightPanelWidth: (width) =>
-        set({ rightPanelWidth: Math.max(320, Math.min(600, width)) }),
+        set({ rightPanelWidth: Math.max(320, Math.min(900, width)) }),
 
       toggleMinimap: () =>
         set((state) => ({ showMinimap: !state.showMinimap })),
