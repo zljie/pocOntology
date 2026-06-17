@@ -18,6 +18,45 @@
 
 ## Backlog（待办）
 
+### \[0048] AI 咨询强化 v1：数据推演 + 执行方案（Planner）
+
+- 用户故事：作为咨询模式用户，我希望输入业务问题/需求后，系统结合本体模型与数据集进行数据推演，并产出结构化“执行方案（Plan）”，以便把讨论直接转成可验证、可落地的工程行动。
+- 验收标准：
+  - [ ] 定义并固化 Plan JSON 结构（目标/假设/步骤/依赖/风险/回滚/产物/校验点），并在 UI 可视化展示
+  - [ ] 当信息不足时，必须返回“澄清问题/缺口清单”，禁止凭空假设关键字段
+  - [ ] Plan 步骤至少覆盖：数据查询（QUERY）+ 方案产物（SQL/DDL/API 草案之一）+ 本体变更建议（ONTOLOGY_CHANGE 预览）
+  - [ ] 支持流式输出（stream），并能在咨询模式右侧面板中稳定渲染
+- 关联（可选）：components/consulting；app/api/consulting-chat(/stream)；lib/meta；stores/consulting-store.ts
+- 记录：创建日期 2026-04-19
+
+***
+
+### \[0049] 本体模型数据集 v1：Vercel 友好的 JSON/CSV 数据源（可复现证据链）
+
+- 用户故事：作为方案架构师/演示者，我希望系统能加载一份与本体模型对应的数据集（JSON/CSV），并在推演时给出可复现的查询证据（条件/命中摘要/统计），以便“推演结果”可解释、可复核。
+- 验收标准：
+  - [ ] 提供数据集 Provider 抽象（list/schema/query），至少支持 JSON；可选支持 CSV
+  - [ ] 查询返回包含 evidence：过滤条件/命中行摘要（Top N）/统计信息（count 等）
+  - [ ] 数据集可被咨询/推演接口调用，作为 LLM 上下文的一部分（而非仅前端展示）
+  - [ ] 文档说明清晰：如何新增/替换数据集、如何关联本体对象（最小映射规则）
+- 关联（可选）：lib/datasets（新增）；app/api/semantic-query*；components/consulting
+- 记录：创建日期 2026-04-19
+
+***
+
+### \[0050] Preview→Confirm→Apply：执行计划模拟回执 + 安全闸门
+
+- 用户故事：作为咨询模式用户，我希望对 AI 生成的执行计划先预览/模拟并确认，再允许落地执行（写入本体/Neo4j 或导出资产），以便可控地把方案转成结果并避免误操作。
+- 验收标准：
+  - [ ] 执行前必须 Preview（dry-run），生成 receipt（plan hash、执行摘要、成功/失败原因、可复现证据）
+  - [ ] 用户可逐步/勾选确认（Confirm），未确认步骤不得执行
+  - [ ] Apply 白名单：v1 至少支持“导出工程资产包（SQL/DDL/API 草案）”；可选支持“写入本体 store + Neo4j upsert”
+  - [ ] 执行失败有明确错误提示与回滚建议（至少提示到具体步骤）
+- 关联（可选）：components/consulting/change-confirm-dialog.tsx；app/api/simulate-graphql；app/api/neo4j/upsert-meta
+- 记录：创建日期 2026-04-19
+
+***
+
 ### \[0042] 咨询模式：AI 变更确认组件（规划→勾选确认→一键落地）
 
 - 用户故事：作为咨询模式用户，我希望在 AI 咨询对话产出“规划变更”（例如新增业务域/新增实体/新增关系/调整实体规模）后，系统弹出一个可勾选的确认面板让我决定哪些变更要落地，并由系统自动完成创建与关联，以便把讨论结果快速转为可验证的本体与业务域规划资产。
@@ -94,6 +133,21 @@
 
 ## In Progress（进行中）
 
+### \[0046] 移除旧内置案例 + 启动三选项导入（PP/Food/上传）
+
+- 用户故事：作为首次进入系统的本体建模用户，我希望系统不再内置旧的图书馆/ERP/SAP HCM 示例，而是在进入时弹出一个三选项引导（加载采购管理 PP 样例、加载餐饮管理 Food 样例、上传 YAML 导入），以便用统一的 OSI YAML 导入链路快速进入画布展示与后续编辑推演。
+- 验收标准：
+  - [ ] 项目中不再出现“图书馆/ERP/SAP HCM”相关示例入口、文案与代码分支（含语义查询本地回退、Neo4j seed、样例数据文件）
+  - [ ] 首次进入且画布为空时，自动弹出启动导入对话框，包含 3 个选项：PP 样例 / Food 样例 / 上传文件
+  - [ ] 选择 PP 样例会导入 `OSIFile/pp_semantic_model_semantic_v3.yaml` 并在成功态展示导入统计，点击“进入画布”后能看到对象与关系
+  - [ ] 选择 Food 样例会导入 `OSIFile/food_semantic_model_semantic_v2.yaml` 并在成功态展示导入统计，点击“进入画布”后能看到对象与关系
+  - [ ] 选择“上传文件”可进入 OSI YAML 上传导入流程，导入成功后同样可进入画布
+  - [ ] `npm run lint` 与 `npm run build` 通过
+- 关联（可选）：components/osi-import/startup-import-dialog.tsx；app/api/osi/import-sample；components/layout/header.tsx；app/api/semantic-query/stream
+- 记录：创建日期 2026-04-18
+
+***
+
 ### \[0043] 新建项目引导画布：渐进式节点生成（业务范围→对象→场景→行为/事件）
 
 - 用户故事：作为首次新建项目的业务建模用户，我希望系统在创建项目后提供一个“引导画布”，用渐进式节点一步步引导我补全业务范围、业务对象、业务场景、业务行为/事件所需的数据，并在每一步自动沉淀为可用的本体元素，以便我从零开始也能稳定进入建模与推演流程。
@@ -150,28 +204,31 @@
   - [ ] Neo4j seed 支持该场景（可选 reset）
 - 记录：创建日期 2026-04-01
 
+## Done（已完成）
+
+### \[0054] 结合附件生成 OSI 本体模型（EA 分析 + 企业推论）
+
+- 用户故事：作为本体建模者/方案架构师，我希望将 EA 分析结果与企业分析推论沉淀为可校验的 OSI semantic_model YAML（含对象/关系/指标/行为层），以便在画布中导入展示并支撑后续推演与行动闭环。
+- 验收标准：
+  - [x] 基于两份附件提取并定义核心业务对象（datasets）与主键/关键字段（必要时做占位假设并显式标注）
+  - [x] 定义对象之间的关键关系（relationships），可用于端到端链路追溯
+  - [x] 定义关键指标（metrics），口径写清楚并可落到可行动粒度
+  - [x] 补齐最小可用行为层（custom_extensions 内嵌 behavior-layer：action_types/rules）用于闭环约束
+  - [x] 生成的 OSI YAML 通过仓库内置 `osi-schema.json` + `behavior-layer.schema.json`（AJV 等价校验）验证
+- 关联（可选）：OSIFile/spec；lib/osi/osi-validate.ts；app/api/osi/import；dtp_osi_from_attachments_v1.yaml
+- 记录：创建日期 2026-04-27；完成日期 2026-04-27
+
 ***
 
-### \[0037] 提交并发布当前代码到 Vercel
+### \[0053] 修复：导入本体后 AI咨询业务域与本体不匹配（清理遗留业务域）
 
-- 用户故事：作为开发者，我希望将当前分支的变更提交并合并到 main，推送至远端触发 Vercel 自动部署，以便在生产环境中验证新功能。
+- 用户故事：作为咨询模式用户，我希望在导入/切换本体模型后，AI 咨询默认以“本次导入的模型业务域”为主，不会因为历史遗留业务域导致上下文不一致或出现“不匹配”提示，以便对话推演稳定可靠。
 - 验收标准：
-  - [ ] 当前分支的变更已全部 commit
-  - [ ] 代码已合并到 main 分支
-  - [ ] 已推送至 origin/main
-- 记录：创建日期 2026-04-01
-
-***
-
-### \[0036] 操作类型 API 绑定自动展示 JSON Payload
-
-- 用户故事：作为业务建模用户，我希望在操作类型中绑定自定义 API 时，系统能够自动根据已配置的参数，智能生成并展示出 JSON Payload 结构，以便更直观地确认请求体格式。
-- 验收标准：
-  - [ ] 在 API 绑定设置为 `CUSTOM_API` 时，自动提取 `inputParameters` 生成 JSON 结构。
-  - [ ] 在界面上以代码块形式（JSON form 结构体）直观展示该 Payload 格式。
-  - [ ] 参数类型和必填项能够在 JSON 注释或结构中得到体现。
-- 关联（可选）：components/property-editor/action-type-editor.tsx
-- 记录：创建日期 2026-04-01
+  - [x] 导入/加载示例（PP/Food/上传 YAML）后，自动重置咨询业务域，并创建/选中一个默认业务域包含全部实体
+  - [x] 若当前选中业务域与本体无交集，则自动取消选中（context 降级为 null），避免 LLM 误判
+  - [x] `npm run lint` 与 `npm run build` 通过
+- 关联（可选）：components/osi-import/*；components/consulting/*；stores/consulting-store.ts
+- 记录：创建日期 2026-04-19；完成日期 2026-04-19
 
 ***
 
@@ -188,7 +245,43 @@
 
 ***
 
-## Done（已完成）
+### \[0052] Sprint2：Planner v1（执行方案 Plan JSON + 缺口追问 + UI 展示）
+
+- 用户故事：作为咨询模式用户，我希望在输入目标后，系统能结合当前本体与数据集证据（evidence）生成结构化“执行方案（Plan）”，并在信息不足时给出缺口追问，以便我能把方案变成可验证的行动清单与工程产物（SQL/DDL/API 草案）。
+- 验收标准：
+  - [x] 新增接口：`POST /api/consulting-exec-plan/stream`，支持流式输出，并在结果中包含一个 ```json 的 Plan 代码块
+  - [x] Plan JSON 至少包含：goal/context/assumptions/steps/artifacts/validation/nextQuestions（字段可选但语义要完整）
+  - [x] 当缺少关键字段/数据集信息时，必须输出 `nextQuestions`（缺口问题），禁止臆测
+  - [x] 咨询模式右侧新增“执行方案”面板，可输入目标并展示 Plan（步骤与可执行片段）
+- 关联（可选）：app/api/consulting-exec-plan/stream；components/consulting/exec-plan-panel.tsx；components/consulting/consulting-right-panel.tsx；stores/ui-store.ts
+- 记录：创建日期 2026-04-19；完成日期 2026-04-19
+
+***
+
+### \[0051] Sprint1：本体模型数据集底座（JSON）+ 查询证据链 API
+
+- 用户故事：作为咨询/推演能力的研发者，我希望系统有一个 Vercel 友好的本地数据集（JSON）加载与查询能力，并在返回结果时给出可复现的证据链（过滤条件/命中摘要/统计），以便后续让 LLM 生成的推演结论“有据可查”。
+- 验收标准：
+  - [x] 仓库新增 `datasets/manifest.json` 与至少 1 份样例数据集（JSON）
+  - [x] 新增数据集 Provider（list/schema/query），并限制返回行数（Top N）
+  - [x] 新增 API：`GET /api/datasets/list`、`POST /api/datasets/query`，返回 evidence（条件/命中摘要/统计）
+  - [x] 咨询模式提供最小入口可触发一次查询并展示结果（便于联调）
+- 关联（可选）：datasets/*；lib/datasets/*；app/api/datasets/*；components/consulting/consulting-chat-panel.tsx
+- 记录：创建日期 2026-04-19；完成日期 2026-04-19
+
+***
+
+### \[0047] 输出项目架构清单（技术栈/模块/API/外部依赖）
+
+- 用户故事：作为项目成员，我希望仓库内有一份可快速对齐的“架构清单”（技术栈、目录/模块职责、后端 API、外部依赖与环境变量、关键链路），以便新成员上手与后续迭代拆分更高效。
+- 验收标准：
+  - [x] 仓库根目录新增 `architecture-checklist.md`
+  - [x] 清单包含：技术栈、关键目录/模块职责、API 路由枚举、环境变量与外部依赖边界、关键业务链路
+  - [x] 可作为后续评审/补齐（CI、观测性、鉴权等）的一页式对齐文档
+- 关联（可选）：architecture-checklist.md
+- 记录：创建日期 2026-04-19；完成日期 2026-04-19
+
+***
 
 ### \[0041] 图谱视觉升级：配色体系 + 连线方向性 + 点选联动高亮
 
