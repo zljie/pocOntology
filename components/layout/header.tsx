@@ -22,12 +22,6 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -60,15 +54,23 @@ export function Header() {
     aiModels,
     analysisInsights,
     scenario,
-    loadSampleData,
     clearAll: clearOntology,
     neo4jProject,
     setNeo4jProject,
   } = useOntologyStore();
   const { clearAll: clearSelection } = useSelectionStore();
   const { clearAll: clearProposals } = useProposalStore();
-  const { setShowImportDialog, setShowOsiImportDialog, showProposalBanner, workMode, setWorkMode, setCanvasViewMode, openRightPanel, enterProjectOnboarding } =
-    useUIStore();
+  const {
+    setShowImportDialog,
+    setShowOsiImportDialog,
+    setShowStartupImportDialog,
+    showProposalBanner,
+    workMode,
+    setWorkMode,
+    setCanvasViewMode,
+    openRightPanel,
+    enterProjectOnboarding,
+  } = useUIStore();
   const { initProjectOnboarding } = useOnboardingStore();
   const [showSemanticQuery, setShowSemanticQuery] = useState(false);
   const [showScenarioSandbox, setShowScenarioSandbox] = useState(false);
@@ -359,40 +361,14 @@ export function Header() {
             新建本体
           </Button>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
-              >
-                加载示例
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40 bg-[#161614] border-[#3d3d3d] text-[#a0a0a0]">
-              <DropdownMenuItem 
-                onClick={() => loadSampleData('library')}
-                className="hover:bg-[#2d2d2d] hover:text-white focus:bg-[#2d2d2d] focus:text-white cursor-pointer"
-              >
-                <Layers className="w-4 h-4 mr-2" />
-                图书馆管理系统
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => loadSampleData('erp')}
-                className="hover:bg-[#2d2d2d] hover:text-white focus:bg-[#2d2d2d] focus:text-white cursor-pointer"
-              >
-                <Boxes className="w-4 h-4 mr-2" />
-                ERP采购业务模块
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => loadSampleData('sap_hcm')}
-                className="hover:bg-[#2d2d2d] hover:text-white focus:bg-[#2d2d2d] focus:text-white cursor-pointer"
-              >
-                <Users className="w-4 h-4 mr-2" />
-                SAP HCM 模块
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
+            onClick={() => setShowStartupImportDialog(true)}
+          >
+            加载示例
+          </Button>
 
           <div className="w-px h-6 bg-[#3d3d3d] mx-1" />
 
@@ -476,7 +452,7 @@ export function Header() {
               <Input
                 value={newProjectDbName}
                 onChange={(e) => setNewProjectDbName(e.target.value)}
-                placeholder="例如：erp_purchase"
+                placeholder="例如：project_demo"
                 className="bg-[#0d0d0d] border-[#3d3d3d] text-white placeholder:text-[#6b6b6b]"
               />
               <div className="text-[11px] text-[#6b6b6b]">
@@ -488,7 +464,7 @@ export function Header() {
               <Input
                 value={newProjectDisplayName}
                 onChange={(e) => setNewProjectDisplayName(e.target.value)}
-                placeholder="例如：ERP 采购推演项目"
+                placeholder="例如：采购管理推演项目"
                 className="bg-[#0d0d0d] border-[#3d3d3d] text-white placeholder:text-[#6b6b6b]"
               />
             </div>

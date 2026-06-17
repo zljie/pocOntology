@@ -14,7 +14,8 @@ interface UIStore {
   showProposalBanner: boolean;
   showImportDialog: boolean;
   showOsiImportDialog: boolean;
-  consultingRightTab: 'consulting' | 'details';
+  showStartupImportDialog: boolean;
+  consultingRightTab: 'consulting' | 'planner' | 'details';
   activeTab: string;
 
   // UI Actions
@@ -32,7 +33,8 @@ interface UIStore {
   toggleProposalBanner: () => void;
   setShowImportDialog: (show: boolean) => void;
   setShowOsiImportDialog: (show: boolean) => void;
-  setConsultingRightTab: (tab: 'consulting' | 'details') => void;
+  setShowStartupImportDialog: (show: boolean) => void;
+  setConsultingRightTab: (tab: 'consulting' | 'planner' | 'details') => void;
   setActiveTab: (tab: string) => void;
   openRightPanel: () => void;
   closeRightPanel: () => void;
@@ -53,6 +55,7 @@ export const useUIStore = create<UIStore>()(
       showProposalBanner: true,
       showImportDialog: false,
       showOsiImportDialog: false,
+      showStartupImportDialog: false,
       consultingRightTab: 'consulting',
       activeTab: 'general',
 
@@ -99,6 +102,9 @@ export const useUIStore = create<UIStore>()(
 
       setShowOsiImportDialog: (show) =>
         set({ showOsiImportDialog: show }),
+
+      setShowStartupImportDialog: (show) =>
+        set({ showStartupImportDialog: show }),
 
       setConsultingRightTab: (tab) =>
         set({ consultingRightTab: tab }),

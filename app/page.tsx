@@ -12,19 +12,27 @@ import { RightSemanticQueryPanel } from "@/components/semantic-query/right-seman
 import { ProjectOnboardingRightPanel } from "@/components/project-onboarding/project-onboarding-right-panel";
 import { ImportDialog } from "@/components/proposal-system/import-dialog";
 import { OsiImportDialog } from "@/components/osi-import/osi-import-dialog";
+import { StartupImportDialog } from "@/components/osi-import/startup-import-dialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useUIStore } from "@/stores";
+import { useOntologyStore, useUIStore } from "@/stores";
 import { ConsultingRightPanel } from "@/components/consulting/consulting-right-panel";
 import { ConsultingLeftPanel } from "@/components/consulting/consulting-left-panel";
 
 export default function HomePage() {
-  const { showImportDialog, setShowImportDialog, workMode, openRightPanel } = useUIStore();
+  const { showImportDialog, setShowImportDialog, workMode, openRightPanel, setShowStartupImportDialog } = useUIStore();
+  const { objectTypes, linkTypes } = useOntologyStore();
 
   React.useEffect(() => {
     if (workMode === "CONSULTING") {
       openRightPanel();
     }
   }, [workMode, openRightPanel]);
+
+  React.useEffect(() => {
+    if (objectTypes.length === 0 && linkTypes.length === 0) {
+      setShowStartupImportDialog(true);
+    }
+  }, [objectTypes.length, linkTypes.length, setShowStartupImportDialog]);
 
   return (
     <TooltipProvider>
@@ -49,6 +57,7 @@ export default function HomePage() {
           onOpenChange={setShowImportDialog}
         />
         <OsiImportDialog />
+        <StartupImportDialog />
       </div>
     </TooltipProvider>
   );

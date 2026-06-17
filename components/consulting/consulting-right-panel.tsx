@@ -3,6 +3,7 @@
 import React from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConsultingChatPanel } from "@/components/consulting/consulting-chat-panel";
+import { ExecPlanPanel } from "@/components/consulting/exec-plan-panel";
 import { PropertyEditorPanel } from "@/components/property-editor/property-editor-panel";
 import { KineticEditorPanel } from "@/components/property-editor/kinetic-editor-panel";
 import { DynamicEditorPanel } from "@/components/property-editor/dynamic-editor-panel";
@@ -21,6 +22,9 @@ export function ConsultingRightPanel() {
             <TabsTrigger value="consulting" className="text-xs">
               AI咨询
             </TabsTrigger>
+              <TabsTrigger value="planner" className="text-xs">
+                执行方案
+              </TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -28,6 +32,8 @@ export function ConsultingRightPanel() {
       <div className="flex-1 min-h-0">
         {tab === "consulting" ? (
           <ConsultingChatPanel />
+        ) : tab === "planner" ? (
+          <ExecPlanPanel />
         ) : (
           <>
             <div className="flex-none p-3 border-b border-[#2d2d2d] bg-[#0d0d0d]">

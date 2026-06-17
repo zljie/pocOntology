@@ -1,0 +1,21 @@
+{
+  "version": "1.0",
+  "datasets": [
+    {
+      "id": "erp-demo",
+      "name": "ERP 采购演示数据集（Demo）",
+      "description": "与 ERP 采购样例本体（Supplier/Material/PR/PO/GR/Invoice）配套的本地 JSON 数据，用于咨询推演时提供可复现证据链。",
+      "type": "json-entities-v1",
+      "file": "erp-demo.json",
+      "entities": [
+        "Supplier",
+        "Material",
+        "PurchaseRequisition",
+        "PurchaseOrder",
+        "GoodsReceipt",
+        "Invoice"
+      ]
+    }
+  ]
+}
+

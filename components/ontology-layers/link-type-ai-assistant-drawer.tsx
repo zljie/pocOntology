@@ -70,7 +70,7 @@ const STEP1_INTRO = `## AI 辅助生成：关系类型（第 1/3 步）
 - 是否存在多对多（是否需要中间对象）
 
 示例（可复制修改）：
-> 采购申请 PR 属于一个部门，PR 包含多条物料明细；PR 审批通过后生成采购订单 PO，PO 关联供应商，PO 也包含多条明细；收货入库 GR 关联 PO，并记录到货仓库。
+> 请购单属于一个部门，请购单包含多条物料明细；请购单审批通过后生成采购订单，采购订单关联供应商，采购订单也包含多条明细；收货入库单关联采购订单，并记录到货仓库。
 `;
 
 const CARDINALITIES: Cardinality[] = ["ONE_TO_ONE", "ONE_TO_MANY", "MANY_TO_ONE", "MANY_TO_MANY"];
@@ -559,4 +559,3 @@ export function LinkTypeAIAssistantDrawer({
     </Sheet>
   );
 }
-

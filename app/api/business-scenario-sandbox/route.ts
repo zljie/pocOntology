@@ -192,65 +192,7 @@ function buildOntologyDigest(ontology: any) {
 }
 
 function buildAgentPrompt(digest: any) {
-  const actionNames: string[] = Array.isArray(digest?.actionTypes)
-    ? digest.actionTypes.map((a: any) => String(a?.apiName || "")).filter(Boolean)
-    : [];
-  const objectNames: string[] = Array.isArray(digest?.objectTypes)
-    ? digest.objectTypes.map((o: any) => String(o?.apiName || "")).filter(Boolean)
-    : [];
-  const linkNames: string[] = Array.isArray(digest?.linkTypes)
-    ? digest.linkTypes.map((l: any) => String(l?.apiName || "")).filter(Boolean)
-    : [];
-  const ruleNames: string[] = Array.isArray(digest?.businessRules)
-    ? digest.businessRules.map((r: any) => String(r?.apiName || "")).filter(Boolean)
-    : [];
-
-  const isLibraryDomain =
-    actionNames.includes("CheckoutBook") ||
-    actionNames.includes("ReturnBook") ||
-    actionNames.includes("CreateReservation") ||
-    objectNames.includes("Book") ||
-    objectNames.includes("Loan") ||
-    objectNames.includes("Patron");
-
-  const isErpDomain =
-    actionNames.includes("CreatePO") ||
-    actionNames.includes("CreatePR") ||
-    actionNames.includes("ReceiveGoods") ||
-    objectNames.includes("PurchaseOrder") ||
-    objectNames.includes("PurchaseRequisition") ||
-    objectNames.includes("GoodsReceipt") ||
-    objectNames.includes("Supplier");
-
-  const libraryGuidance = isLibraryDomain
-    ? `领域提示（已识别为“图书馆借阅管理系统”）：
-核心动作示例：CancelReservation, CatalogBook, CheckoutBook, CreateReservation, PayFine, RegisterPatron, RenewLoan, ReturnBook, WeedBook
-核心对象示例：Book, Category, Holding, Library, Loan, Patron, Fine, Publisher, Department, Budget
-核心关系示例：HoldingBook, HoldingLibrary, LoanHolding, PatronLoans, PatronReservations, PatronFines, PatronDepartment, BookCategory, BookPublisher, FineLoan
-核心规则示例：FinePaymentRequired, LoanLimitByPatronType, LoanPeriodByPatronType, OverdueFineRate, RenewalLimit, ReservationLimit, ReservationPickupExpiry, ReservationPriorityByType
-
-角色导向（优先用角色做 MECE 分组）：
-- 读者（Patron）：找书/借书/还书/续借/预约/缴费/账户管理
-- 馆员（Librarian）：编目上架/剔旧下架/借还处理/预约取书/异常处理
-- 管理员（Admin/Manager）：预算与采购/规则配置/人员与部门/运营与合规
-- 系统（System/Automation）：推荐/通知/对账/批处理/审计与观测`
-    : "";
-
-  const erpGuidance = isErpDomain
-    ? `领域提示（已识别为“ERP采购业务模块”）：
-核心动作示例：CreatePR, ApprovePR, CreatePO, ReceiveGoods, VerifyInvoice, MakePayment
-核心对象示例：Supplier, Material, PurchaseRequisition, PurchaseOrder, GoodsReceipt, Invoice
-核心关系示例：PRMaterial, POSupplier, POtoPR, GRtoPO, InvoiceToPO
-核心规则示例：POApprovalMatrix, ThreeWayMatch
-
-角色导向（优先用角色做 MECE 分组）：
-- 需求方（Requester）：提报需求/关注到货/撤销申请
-- 采购员（Buyer）：寻源/创建PO/跟催/供应商绩效
-- 仓管员（Warehouse）：收货/质检入库/退货出库
-- 财务（Finance）：发票校验/付款/对账
-- 系统（System）：三单匹配/预警/分析报表`
-    : "";
-
+  void digest;
   return `你是“业务场景穷举Agent”（本体业务模型设计器的场景沙盘）。你的目标是：基于输入本体，穷举“可执行”的业务场景清单，并给出覆盖度线索（映射到本体元素）。
 
 先读后写（必须遵守）：
@@ -278,9 +220,6 @@ function buildAgentPrompt(digest: any) {
    - goal/trigger ≤ 40 字
 5) coverageHints 与 missingHints 的数组上限：每类最多 6 个；不要重复；不要输出本体词表全文；不要在字符串里换行。
 6) 如果你预计会超长：删减低优先级场景（重复/边缘/过细粒度），保持每个 ActionType 至少出现一次。
-
-${libraryGuidance}
-${erpGuidance}
 
 输出严格为 JSON，不要输出任何额外文本。
 
@@ -340,7 +279,7 @@ ${erpGuidance}
 1) 优先围绕 ActionType 产出场景：对每个 ActionType，至少产出 1 个“主流程”场景；对关键动作再补 1-2 个异常场景。
 2) 用 BusinessRule 牵引异常/边界：例如额度限制、期限、优先级、逾期计费、审批矩阵等。
 3) 对 LinkType 牵引协作与数据一致性：例如关联关系、外键约束等。
-4) 如果识别为特定领域（如图书馆、ERP），分组标题优先按角色命名，并在每组内覆盖该角色的“端到端旅程”。
+4) 如果识别为特定领域（如采购管理、餐饮管理），分组标题优先按角色命名，并在每组内覆盖该角色的“端到端旅程”。
 
 输入（本体摘要，供引用 apiName）：
 ${JSON.stringify(digest)}

@@ -9,40 +9,14 @@ import {
   BusinessRule,
   AIModel,
   AnalysisInsight,
-  SAMPLE_OBJECT_TYPES,
-  SAMPLE_LINK_TYPES,
-  SAMPLE_ACTION_TYPES,
-  SAMPLE_DATA_FLOWS,
-  SAMPLE_BUSINESS_RULES,
-  SAMPLE_AI_MODELS,
-  SAMPLE_ANALYSIS_INSIGHTS,
 } from '@/lib/types/ontology';
-import {
-  ERP_OBJECT_TYPES,
-  ERP_LINK_TYPES,
-  ERP_ACTION_TYPES,
-  ERP_DATA_FLOWS,
-  ERP_BUSINESS_RULES,
-  ERP_AI_MODELS,
-  ERP_ANALYSIS_INSIGHTS,
-} from '@/lib/types/ontology-erp-sample';
-import {
-  SAP_HCM_OBJECT_TYPES,
-  SAP_HCM_LINK_TYPES,
-  SAP_HCM_ACTION_TYPES,
-  SAP_HCM_DATA_FLOWS,
-  SAP_HCM_BUSINESS_RULES,
-  SAP_HCM_AI_MODELS,
-  SAP_HCM_ANALYSIS_INSIGHTS,
-} from '@/lib/types/ontology-sap-hcm-sample';
 import { MetaCore, MetaScenario, MetaSnapshot, stableHash } from '@/lib/meta/meta-core';
 import { OrmMapping } from '@/lib/orm/orm-mapping';
 import { buildDefaultOrmMapping } from '@/lib/orm/postgres';
-import { buildErpOrmMapping } from '@/lib/orm/erp';
 import { generateId } from '@/lib/utils';
 
 function buildOrmMapping(meta: MetaCore) {
-  return meta.scenario === 'erp' ? buildErpOrmMapping(meta) : buildDefaultOrmMapping(meta);
+  return buildDefaultOrmMapping(meta);
 }
 
 interface OntologyStore {
@@ -111,7 +85,6 @@ interface OntologyStore {
   getAnalysisInsight: (id: string) => AnalysisInsight | undefined;
 
   // Utility Actions
-  loadSampleData: (scenario?: 'library' | 'erp' | 'sap_hcm') => void;
   clearAll: () => void;
   updateLastSaved: () => void;
   replaceAll: (meta: MetaCore) => void;
@@ -451,84 +424,6 @@ export const useOntologyStore = create<OntologyStore>()(
       },
 
       // ================== Utility Actions ==================
-      loadSampleData: (scenario = 'library') => {
-        if (scenario === 'erp') {
-          const meta: MetaCore = {
-            scenario: 'erp',
-            objectTypes: ERP_OBJECT_TYPES,
-            linkTypes: ERP_LINK_TYPES,
-            actionTypes: ERP_ACTION_TYPES,
-            dataFlows: ERP_DATA_FLOWS,
-            businessRules: ERP_BUSINESS_RULES,
-            aiModels: ERP_AI_MODELS,
-            analysisInsights: ERP_ANALYSIS_INSIGHTS,
-          };
-          const mapping = buildOrmMapping(meta);
-          set({
-            objectTypes: ERP_OBJECT_TYPES,
-            linkTypes: ERP_LINK_TYPES,
-            actionTypes: ERP_ACTION_TYPES,
-            dataFlows: ERP_DATA_FLOWS,
-            businessRules: ERP_BUSINESS_RULES,
-            aiModels: ERP_AI_MODELS,
-            analysisInsights: ERP_ANALYSIS_INSIGHTS,
-            scenario: 'erp',
-            ormMapping: mapping,
-            lastSaved: new Date().toISOString(),
-          });
-        } else if (scenario === 'sap_hcm') {
-          const meta: MetaCore = {
-            scenario: 'sap_hcm',
-            objectTypes: SAP_HCM_OBJECT_TYPES,
-            linkTypes: SAP_HCM_LINK_TYPES,
-            actionTypes: SAP_HCM_ACTION_TYPES,
-            dataFlows: SAP_HCM_DATA_FLOWS,
-            businessRules: SAP_HCM_BUSINESS_RULES,
-            aiModels: SAP_HCM_AI_MODELS,
-            analysisInsights: SAP_HCM_ANALYSIS_INSIGHTS,
-          };
-          const mapping = buildOrmMapping(meta);
-          mapping.databaseName = 'sap_hcm';
-          mapping.schemaName = 'hcm';
-          set({
-            objectTypes: SAP_HCM_OBJECT_TYPES,
-            linkTypes: SAP_HCM_LINK_TYPES,
-            actionTypes: SAP_HCM_ACTION_TYPES,
-            dataFlows: SAP_HCM_DATA_FLOWS,
-            businessRules: SAP_HCM_BUSINESS_RULES,
-            aiModels: SAP_HCM_AI_MODELS,
-            analysisInsights: SAP_HCM_ANALYSIS_INSIGHTS,
-            scenario: 'sap_hcm',
-            ormMapping: mapping,
-            lastSaved: new Date().toISOString(),
-          });
-        } else {
-          const meta: MetaCore = {
-            scenario: 'library',
-            objectTypes: SAMPLE_OBJECT_TYPES,
-            linkTypes: SAMPLE_LINK_TYPES,
-            actionTypes: SAMPLE_ACTION_TYPES,
-            dataFlows: SAMPLE_DATA_FLOWS,
-            businessRules: SAMPLE_BUSINESS_RULES,
-            aiModels: SAMPLE_AI_MODELS,
-            analysisInsights: SAMPLE_ANALYSIS_INSIGHTS,
-          };
-          const mapping = buildOrmMapping(meta);
-          set({
-            objectTypes: SAMPLE_OBJECT_TYPES,
-            linkTypes: SAMPLE_LINK_TYPES,
-            actionTypes: SAMPLE_ACTION_TYPES,
-            dataFlows: SAMPLE_DATA_FLOWS,
-            businessRules: SAMPLE_BUSINESS_RULES,
-            aiModels: SAMPLE_AI_MODELS,
-            analysisInsights: SAMPLE_ANALYSIS_INSIGHTS,
-            scenario: 'library',
-            ormMapping: mapping,
-            lastSaved: new Date().toISOString(),
-          });
-        }
-      },
-
       clearAll: () => {
         const meta: MetaCore = {
           scenario: 'custom',

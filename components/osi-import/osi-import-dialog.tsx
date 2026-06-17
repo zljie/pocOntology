@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Upload, AlertCircle, CheckCircle2 } from "lucide-react";
-import { useOntologyStore, useProposalStore, useSelectionStore, useUIStore } from "@/stores";
+import { useConsultingStore, useOntologyStore, useProposalStore, useSelectionStore, useUIStore } from "@/stores";
 import type { MetaCore } from "@/lib/meta/meta-core";
 import { upsertMetaToNeo4jClient } from "@/lib/neo4j/client";
 
@@ -36,6 +36,7 @@ export function OsiImportDialog() {
   const { replaceAll, neo4jProject } = useOntologyStore();
   const { clearAll: clearSelection } = useSelectionStore();
   const { clearAll: clearProposals } = useProposalStore();
+  const { clear: clearConsulting, addDomain, toggleEntityInDomain, selectDomain } = useConsultingStore();
 
   const [files, setFiles] = React.useState<File[]>([]);
   const [isImporting, setIsImporting] = React.useState(false);
@@ -92,6 +93,18 @@ export function OsiImportDialog() {
       replaceAll(meta);
       clearSelection();
       clearProposals();
+      clearConsulting();
+
+      // 以导入模型为主：默认创建一个业务域（名称取第一个文件名），并包含全部实体
+      const inferredName =
+        files.length === 1
+          ? files[0]?.name?.replace(/\.(yaml|yml)$/i, "") || "导入模型"
+          : "导入模型";
+      const domainId = addDomain(inferredName);
+      for (const ot of meta.objectTypes || []) {
+        toggleEntityInDomain(domainId, ot.id);
+      }
+      selectDomain(domainId);
 
       if (neo4jProject) {
         const controller = new AbortController();

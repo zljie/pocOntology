@@ -45,7 +45,6 @@ import {
 import { ObjectType, OntologyLayer, ONTOLOGY_LAYER_INFO } from "@/lib/types/ontology";
 import { cn } from "@/lib/utils";
 import { buildGraphqlTemplate } from "@/lib/semantic/graphql";
-import { buildErpSqlPreview } from "@/lib/semantic/sql";
 
 // 解析结果类型
 interface ParsedEntity {
@@ -99,98 +98,13 @@ interface SemanticQueryInputProps {
 }
 
 // 动作关键词映射
-const ACTION_KEYWORDS: Record<string, { actionId: string; actionName: string; actionDisplayName: string }> = {
-  "借": { actionId: "action-checkout", actionName: "CheckoutBook", actionDisplayName: "借书" },
-  "借阅": { actionId: "action-checkout", actionName: "CheckoutBook", actionDisplayName: "借书" },
-  "借书": { actionId: "action-checkout", actionName: "CheckoutBook", actionDisplayName: "借书" },
-  "还": { actionId: "action-return", actionName: "ReturnBook", actionDisplayName: "还书" },
-  "还书": { actionId: "action-return", actionName: "ReturnBook", actionDisplayName: "还书" },
-  "归还": { actionId: "action-return", actionName: "ReturnBook", actionDisplayName: "还书" },
-  "续借": { actionId: "action-renew", actionName: "RenewLoan", actionDisplayName: "续借" },
-  "续期": { actionId: "action-renew", actionName: "RenewLoan", actionDisplayName: "续借" },
-  "预约": { actionId: "action-reserve", actionName: "CreateReservation", actionDisplayName: "创建预约" },
-  "注册": { actionId: "action-register-patron", actionName: "RegisterPatron", actionDisplayName: "读者注册" },
-  "罚款": { actionId: "action-pay-fine", actionName: "PayFine", actionDisplayName: "缴纳罚款" },
-  "缴费": { actionId: "action-pay-fine", actionName: "PayFine", actionDisplayName: "缴纳罚款" },
-  "编目": { actionId: "action-catalog", actionName: "CatalogBook", actionDisplayName: "图书编目" },
-  "下架": { actionId: "action-weeding", actionName: "WeedBook", actionDisplayName: "图书下架" },
-  // ERP
-  "创建采购申请": { actionId: "action-create-pr", actionName: "CreatePR", actionDisplayName: "创建采购申请" },
-  "采购申请": { actionId: "action-create-pr", actionName: "CreatePR", actionDisplayName: "创建采购申请" },
-  "创建采购订单": { actionId: "action-create-po", actionName: "CreatePO", actionDisplayName: "创建采购订单" },
-  "采购订单": { actionId: "action-create-po", actionName: "CreatePO", actionDisplayName: "创建采购订单" },
-  "采购": { actionId: "action-create-po", actionName: "CreatePO", actionDisplayName: "创建采购订单" },
-  "订购": { actionId: "action-create-po", actionName: "CreatePO", actionDisplayName: "创建采购订单" },
-  "提交订单": { actionId: "action-create-po", actionName: "CreatePO", actionDisplayName: "创建采购订单" },
-  "申请": { actionId: "action-create-pr", actionName: "CreatePR", actionDisplayName: "创建采购申请" },
-  "收货": { actionId: "action-receive-goods", actionName: "ReceiveGoods", actionDisplayName: "收货过账" },
-  "入库": { actionId: "action-receive-goods", actionName: "ReceiveGoods", actionDisplayName: "收货过账" },
-};
+const ACTION_KEYWORDS: Record<string, { actionId: string; actionName: string; actionDisplayName: string }> = {};
 
 // 属性关键词映射
-const PROPERTY_KEYWORDS: Record<string, { objectTypeId: string; propertyId: string; propertyName: string; displayName: string; baseType: string }> = {
-  "书名": { objectTypeId: "book-001", propertyId: "title", propertyName: "title", displayName: "书名", baseType: "STRING" },
-  "图书": { objectTypeId: "book-001", propertyId: "title", propertyName: "title", displayName: "书名", baseType: "STRING" },
-  "三体": { objectTypeId: "book-001", propertyId: "title", propertyName: "title", displayName: "书名", baseType: "STRING" },
-  "读者": { objectTypeId: "patron-001", propertyId: "patronName", propertyName: "patronName", displayName: "姓名", baseType: "STRING" },
-  "姓名": { objectTypeId: "patron-001", propertyId: "patronName", propertyName: "patronName", displayName: "姓名", baseType: "STRING" },
-  "学号": { objectTypeId: "patron-001", propertyId: "patronId", propertyName: "patronId", displayName: "读者ID", baseType: "STRING" },
-  "读者ID": { objectTypeId: "patron-001", propertyId: "patronId", propertyName: "patronId", displayName: "读者ID", baseType: "STRING" },
-  "条码": { objectTypeId: "holding-001", propertyId: "barcode", propertyName: "barcode", displayName: "条码号", baseType: "STRING" },
-  "条码号": { objectTypeId: "holding-001", propertyId: "barcode", propertyName: "barcode", displayName: "条码号", baseType: "STRING" },
-  "天数": { objectTypeId: "loan-001", propertyId: "dueDate", propertyName: "dueDate", displayName: "应还日期", baseType: "TIMESTAMP" },
-  "期限": { objectTypeId: "loan-001", propertyId: "dueDate", propertyName: "dueDate", displayName: "应还日期", baseType: "TIMESTAMP" },
-  "日期": { objectTypeId: "loan-001", propertyId: "checkoutDate", propertyName: "checkoutDate", displayName: "借出日期", baseType: "TIMESTAMP" },
-  "借阅": { objectTypeId: "loan-001", propertyId: "loanId", propertyName: "loanId", displayName: "借阅ID", baseType: "STRING" },
-  "借阅ID": { objectTypeId: "loan-001", propertyId: "loanId", propertyName: "loanId", displayName: "借阅ID", baseType: "STRING" },
-  "状态": { objectTypeId: "loan-001", propertyId: "loanStatus", propertyName: "loanStatus", displayName: "借阅状态", baseType: "STRING" },
-  "价格": { objectTypeId: "holding-001", propertyId: "price", propertyName: "price", displayName: "采购价格", baseType: "DOUBLE" },
-  "费用": { objectTypeId: "fine-001", propertyId: "amount", propertyName: "amount", displayName: "罚款金额", baseType: "DOUBLE" },
-  "金额": { objectTypeId: "fine-001", propertyId: "amount", propertyName: "amount", displayName: "罚款金额", baseType: "DOUBLE" },
-  "罚款": { objectTypeId: "fine-001", propertyId: "amount", propertyName: "amount", displayName: "罚款金额", baseType: "DOUBLE" },
-  // ERP
-  "数量": { objectTypeId: "purchase-requisition", propertyId: "quantity", propertyName: "quantity", displayName: "数量", baseType: "DOUBLE" },
-  "物料编码": { objectTypeId: "material-erp", propertyId: "materialCode", propertyName: "materialCode", displayName: "物料编码", baseType: "STRING" },
-  "PR编号": { objectTypeId: "purchase-requisition", propertyId: "prNumber", propertyName: "prNumber", displayName: "PR编号", baseType: "STRING" },
-  "供应商编码": { objectTypeId: "supplier-erp", propertyId: "supplierId", propertyName: "supplierId", displayName: "供应商编码", baseType: "STRING" },
-  "PO编号": { objectTypeId: "purchase-order", propertyId: "poNumber", propertyName: "poNumber", displayName: "PO编号", baseType: "STRING" },
-  "收货数量": { objectTypeId: "goods-receipt", propertyId: "receivedQuantity", propertyName: "receivedQuantity", displayName: "收货数量", baseType: "DOUBLE" },
-  "单号": { objectTypeId: "purchase-order", propertyId: "poNumber", propertyName: "poNumber", displayName: "订单编号", baseType: "STRING" },
-};
+const PROPERTY_KEYWORDS: Record<string, { objectTypeId: string; propertyId: string; propertyName: string; displayName: string; baseType: string }> = {};
 
 // 实体关键词映射
-const OBJECT_KEYWORDS: Record<string, { objectTypeId: string; objectName: string; displayName: string }> = {
-  "图书": { objectTypeId: "book-001", objectName: "Book", displayName: "图书" },
-  "书": { objectTypeId: "book-001", objectName: "Book", displayName: "图书" },
-  "馆藏": { objectTypeId: "holding-001", objectName: "Holding", displayName: "馆藏副本" },
-  "副本": { objectTypeId: "holding-001", objectName: "Holding", displayName: "馆藏副本" },
-  "读者": { objectTypeId: "patron-001", objectName: "Patron", displayName: "读者" },
-  "用户": { objectTypeId: "patron-001", objectName: "Patron", displayName: "读者" },
-  "借阅": { objectTypeId: "loan-001", objectName: "Loan", displayName: "借阅记录" },
-  "借阅记录": { objectTypeId: "loan-001", objectName: "Loan", displayName: "借阅记录" },
-  "预约": { objectTypeId: "reservation-001", objectName: "Reservation", displayName: "预约" },
-  "罚款": { objectTypeId: "fine-001", objectName: "Fine", displayName: "罚款记录" },
-  "罚款记录": { objectTypeId: "fine-001", objectName: "Fine", displayName: "罚款记录" },
-  "供应商": { objectTypeId: "supplier-001", objectName: "Supplier", displayName: "供应商" },
-  "预算": { objectTypeId: "budget-001", objectName: "Budget", displayName: "预算" },
-  "部门": { objectTypeId: "department-001", objectName: "Department", displayName: "部门" },
-  "图书馆": { objectTypeId: "library-001", objectName: "Library", displayName: "图书馆" },
-  "工作人员": { objectTypeId: "staff-001", objectName: "Staff", displayName: "工作人员" },
-  "分类": { objectTypeId: "category-001", objectName: "Category", displayName: "分类" },
-  "出版社": { objectTypeId: "publisher-001", objectName: "Publisher", displayName: "出版社" },
-  // ERP
-  "供应商ERP": { objectTypeId: "supplier-erp", objectName: "Supplier", displayName: "供应商" },
-  "物料": { objectTypeId: "material-erp", objectName: "Material", displayName: "物料" },
-  "产品": { objectTypeId: "material-erp", objectName: "Material", displayName: "物料" },
-  "采购申请": { objectTypeId: "purchase-requisition", objectName: "PurchaseRequisition", displayName: "采购申请" },
-  "PR": { objectTypeId: "purchase-requisition", objectName: "PurchaseRequisition", displayName: "采购申请" },
-  "采购订单": { objectTypeId: "purchase-order", objectName: "PurchaseOrder", displayName: "采购订单" },
-  "订单": { objectTypeId: "purchase-order", objectName: "PurchaseOrder", displayName: "采购订单" },
-  "PO": { objectTypeId: "purchase-order", objectName: "PurchaseOrder", displayName: "采购订单" },
-  "收货单": { objectTypeId: "goods-receipt", objectName: "GoodsReceipt", displayName: "收货单" },
-  "入库单": { objectTypeId: "goods-receipt", objectName: "GoodsReceipt", displayName: "收货单" },
-  "发票": { objectTypeId: "invoice", objectName: "Invoice", displayName: "发票" },
-};
+const OBJECT_KEYWORDS: Record<string, { objectTypeId: string; objectName: string; displayName: string }> = {};
 
 // 日期模式
 const DATE_PATTERNS = [
@@ -260,7 +174,7 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
       setParsedResult(result);
       setSemanticParsedResult(result);
       setSemanticHighlightedNodeIds(deriveHighlightedObjectTypeIds(result, objectTypes, normalizedQuery));
-      const localPreview = generateSemanticPreview(result, normalizedQuery, actionTypes, ormMapping, scenario);
+      const localPreview = generateSemanticPreview(result, normalizedQuery, actionTypes);
       setSemanticQueryPreview(localPreview);
       const streamResolved = await requestSemanticAgentStream(normalizedQuery, (event) => {
         if (latestParseRequestRef.current !== requestId) {
@@ -439,8 +353,12 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
     actionTypes,
     objectTypes,
     businessRules,
-    ormMapping,
-    scenario,
+    openRightPanel,
+    selectActionType,
+    parsedAgentStatus,
+    previewAgentStatus,
+    setSemanticParsedResult,
+    setSemanticResourcePreview,
     setSemanticHighlightedNodeIds,
     clearSemanticHighlightedNodeIds,
     setSemanticQueryPreview,
@@ -506,7 +424,7 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#6b6b6b]" />
           <Input
-            placeholder="输入业务需求，例如：借阅《三体》这本书..."
+            placeholder="输入业务需求，例如：为缺料预警生成两套请购方案并推演链路..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -526,7 +444,7 @@ export function SemanticQueryInput({ className }: SemanticQueryInputProps) {
         {/* Examples */}
         <div className="flex flex-wrap gap-2 mt-3">
           <span className="text-[10px] text-[#6b6b6b]">示例:</span>
-          {["借阅《三体》", "还书，条码号 ABC123", "创建采购申请，物料 A001 数量 100"].map((example) => (
+          {["为缺料预警生成两套请购方案并推演链路", "为临期原材料生成处置方案并推演链路", "查询某个对象的关键属性与关系"].map((example) => (
             <button
               key={example}
               onClick={() => setQuery(example)}
@@ -714,38 +632,36 @@ function performParsing(
         propertyName: prop.propertyName,
         displayName: prop.displayName,
         value: value,
-        inferred: keyword === "三体" || keyword === "天数" || DATE_PATTERNS.some(p => p.test(query)),
+        inferred: DATE_PATTERNS.some((p) => p.test(query)),
         source: prop.baseType,
         objectTypeId: prop.objectTypeId,
       });
     }
   }
 
-  // 4. 特殊处理：从 query 中提取《三体》这样的书名
+  // 4. 特殊处理：提取《...》内容
   const bookTitleMatch = query.match(/《([^》]+)》/);
   if (bookTitleMatch) {
     result.suggestedProperties.push({
       propertyId: "title",
       propertyName: "title",
-      displayName: "书名",
+      displayName: "标题",
       value: bookTitleMatch[1],
       inferred: false,
       source: "STRING",
-      objectTypeId: "book-001",
     });
   }
 
-  // 5. 提取数字作为天数/期限
+  // 5. 提取数字作为天数
   const dayMatch = query.match(/(\d+)\s*天/);
   if (dayMatch) {
     result.suggestedProperties.push({
-      propertyId: "loanPeriodDays",
-      propertyName: "loanPeriodDays",
-      displayName: "借阅天数",
+      propertyId: "days",
+      propertyName: "days",
+      displayName: "天数",
       value: dayMatch[1],
       inferred: true,
       source: "INTEGER",
-      objectTypeId: "loan-001",
     });
   }
 
@@ -771,87 +687,42 @@ function performParsing(
       }
       
       result.suggestedProperties.push({
-        propertyId: "checkoutDate",
-        propertyName: "checkoutDate",
-        displayName: "借阅日期",
+        propertyId: "date",
+        propertyName: "date",
+        displayName: "日期",
         value: dateValue,
         inferred: true,
         source: "TIMESTAMP",
-        objectTypeId: "loan-001",
       });
       break;
     }
   }
 
-  // 7. 获取关联的数据流
+  // 7. 获取关联的数据流（通用兜底）
   if (result.action.id) {
-    const checkoutFlow = {
-      id: "flow-checkout",
-      name: "CheckoutProcess",
-      steps: [
-        "1. 验证读者身份",
-        "2. 检查馆藏可用性",
-        "3. 验证业务规则（借阅限额、超期等）",
-        "4. 计算应还日期",
-        "5. 创建借阅记录",
-        "6. 更新馆藏状态",
-      ],
+    result.dataFlow = {
+      id: "flow-generic",
+      name: "GenericFlow",
+      steps: ["1. 解析意图", "2. 识别实体", "3. 提取参数", "4. 执行动作", "5. 写入/更新", "6. 返回结果"],
     };
-    
-    if (result.action.id === "action-checkout") {
-      result.dataFlow = checkoutFlow;
-    }
   }
 
-  // 8. 验证业务规则
-  const loanLimitRule = businessRules.find((r) => r.apiName === "LoanLimitByPatronType");
-  const overdueRule = businessRules.find((r) => r.apiName === "OverdueFineRate");
-  
-  if (result.action.id === "action-checkout") {
-    result.businessRules = [
-      {
-        id: loanLimitRule?.id || "rule-loan-limit",
-        name: loanLimitRule?.displayName || "借阅数量限制",
-        status: "PASS",
-        message: "将验证读者当前借阅数量是否未达上限",
-      },
-      {
-        id: overdueRule?.id || "rule-overdue-fine",
-        name: overdueRule?.displayName || "超期罚款规则",
-        status: "WARN",
-        message: "需确认借阅天数，系统将自动计算应还日期",
-      },
-    ];
+  // 8. 验证业务规则（通用兜底）
+  if (result.action.id && Array.isArray(businessRules)) {
+    const relatedRules = businessRules
+      .filter((r: any) => Array.isArray(r?.appliesToActionTypeIds) && r.appliesToActionTypeIds.includes(result.action.id))
+      .slice(0, 2);
+    result.businessRules = relatedRules.map((r: any) => ({
+      id: r?.id || "rule-generic",
+      name: r?.displayName || r?.apiName || "通用规则校验",
+      status: "WARN",
+      message: "可能适用的业务规则",
+    }));
   }
 
   // 9. 输出结果
   const derivedOutput = deriveOutputFromActionTypes(result.action, actionTypes);
-  if (derivedOutput.length > 0) {
-    result.output = derivedOutput;
-  } else if (result.action.id === "action-checkout") {
-    result.output = [
-      {
-        propertyId: "loanId",
-        propertyName: "loanId",
-        displayName: "借阅ID",
-        description: "系统将自动生成唯一借阅编号",
-      },
-      {
-        propertyId: "dueDate",
-        propertyName: "dueDate",
-        displayName: "应还日期",
-        description: "根据读者类型和借阅天数自动计算",
-      },
-      {
-        propertyId: "loanStatus",
-        propertyName: "loanStatus",
-        displayName: "借阅状态",
-        description: "初始状态为 ACTIVE（进行中）",
-      },
-    ];
-  } else {
-    result.output = [];
-  }
+  result.output = derivedOutput;
 
   return result;
 }
@@ -1056,282 +927,34 @@ function normalizeLLMParsedResult(
 function generateSemanticPreview(
   result: ParsedIntent,
   query: string,
-  actionTypes: any[],
-  ormMapping: any,
-  scenario: any
+  actionTypes: any[]
 ) {
   const actionType = Array.isArray(actionTypes) ? actionTypes.find((at) => at.id === result.action.id) : null;
-  if (scenario === "erp" && actionType?.interfaceMapping?.kind === "GRAPHQL") {
-    const mapping = actionType.interfaceMapping;
+  const escaped = query.trim().replaceAll('"', '\\"');
+
+  const mapping = actionType?.interfaceMapping?.kind === "GRAPHQL" ? actionType.interfaceMapping : null;
+  const graphqlTemplate = mapping ? buildGraphqlTemplate(mapping) : `query SemanticQuery($query: String!) {\n  semanticQuery(query: $query) {\n    receipt\n  }\n}`;
+  const templateVars: Record<string, string> = mapping ? {} : { query: query.trim() };
+
+  if (mapping) {
     const extracted = Object.fromEntries(
       (result.suggestedProperties || [])
         .filter((p) => p?.propertyName && typeof p?.value === "string")
         .map((p) => [String(p.propertyName), String(p.value)])
     );
-    const nowIso = new Date().toISOString();
-    const templateVars: Record<string, string> = {};
     for (const f of mapping.inputFields || []) {
-      if (extracted[f]) {
-        templateVars[f] = extracted[f];
-        continue;
-      }
-      if (f.toLowerCase().includes("date")) {
-        templateVars[f] = nowIso;
-        continue;
-      }
-      if (f.toLowerCase().includes("quantity")) {
-        templateVars[f] = "10";
-        continue;
-      }
-      templateVars[f] = "";
+      templateVars[f] = extracted[f] || "";
     }
-    if (result.action.id === "action-create-po") {
-      if (!templateVars.prNumber) templateVars.prNumber = "PR20260001";
-      if (!templateVars.supplierId) templateVars.supplierId = "SUP-0001";
-    }
-    if (result.action.id === "action-create-pr") {
-      if (!templateVars.materialCode) templateVars.materialCode = "MAT-0001";
-      if (!templateVars.quantity) templateVars.quantity = "10";
-      if (!templateVars.requiredDate) templateVars.requiredDate = nowIso;
-    }
-    if (result.action.id === "action-receive-goods") {
-      if (!templateVars.poNumber) templateVars.poNumber = "PO20260001";
-      if (!templateVars.deliveryNote) templateVars.deliveryNote = "DN-0001";
-      if (!templateVars.receivedQuantity) templateVars.receivedQuantity = "10";
-    }
-
-    const dsl =
-      result.action.id === "action-create-pr"
-        ? `ACTION CreatePR WITH PurchaseRequisition.materialCode="${templateVars.materialCode}", quantity=${templateVars.quantity}, requiredDate="${templateVars.requiredDate}"`
-        : result.action.id === "action-create-po"
-        ? `ACTION CreatePO WITH PurchaseOrder.prNumber="${templateVars.prNumber}", supplierId="${templateVars.supplierId}"`
-        : `ACTION ReceiveGoods WITH GoodsReceipt.poNumber="${templateVars.poNumber}", receivedQuantity=${templateVars.receivedQuantity}`;
-
-    const graphqlTemplate = buildGraphqlTemplate(mapping);
-    const sqlPreview = ormMapping
-      ? buildErpSqlPreview({
-          meta: {
-            scenario: "erp",
-            objectTypes: [],
-            linkTypes: [],
-            actionTypes: [],
-            dataFlows: [],
-            businessRules: [],
-            aiModels: [],
-            analysisInsights: [],
-          } as any,
-          mapping: ormMapping,
-          actionTypeId: result.action.id,
-          templateVars,
-        })
-      : null;
-
-    return {
-      query,
-      generatedAt: new Date().toISOString(),
-      semanticScenario: `系统识别到 ERP 采购动作“${result.action.displayName}”，并将输入参数映射为接口调用与数据库写入计划。`,
-      rdf: `lib:ERP_Action_${result.action.name} a lib:Action ;\n  lib:displayName "${result.action.displayName}" .`,
-      owl: `Class: lib:ERPAction\n  Annotations: rdfs:label "ERP采购动作"`,
-      swrl: `lib:Rule_ERP_Validation a lib:BusinessRule ;\n  lib:then """ true """ .`,
-      dsl,
-      graphqlTemplate,
-      templateVars,
-      sql: sqlPreview?.sql,
-      sqlVars: sqlPreview?.vars,
-      schemaVersion: "semantic-preview.v2",
-      source: "rule" as const,
-    };
   }
-
-  const bookTitleMatch = query.match(/《([^》]+)》/);
-  const personNameMatch = query.match(/(?:读者|用户|会员)\s*([^\s，,。]+)/);
-  const barcodeMatch = query.match(/(?:条码号?|barcode)\s*[:：]?\s*([A-Za-z0-9_-]+)/i);
-  const dayMatch = query.match(/(\d+)\s*天/);
-  const now = new Date();
-  const startTime = now.toISOString().replace(/\.\d{3}Z$/, "Z");
-  const durationDays = dayMatch ? Number(dayMatch[1]) : 5;
-  const end = new Date(now);
-  end.setDate(end.getDate() + durationDays);
-  end.setHours(23, 59, 59, 0);
-  const endTime = end.toISOString().replace(/\.\d{3}Z$/, "Z");
-  const personName = personNameMatch?.[1] || "张三";
-  const bookTitle = bookTitleMatch?.[1] || "目标图书";
-  const barcode = barcodeMatch?.[1] || "TS2026001";
-  const actionRuleName =
-    result.action.id === "action-return"
-      ? "归还规则"
-      : result.action.id === "action-renew"
-      ? "续借规则"
-      : "普通借阅规则";
-  const dsl =
-    result.action.id === "action-return"
-      ? `ACTION ReturnBook WITH Holding.barcode="${barcode}"`
-      : result.action.id === "action-renew"
-      ? `ACTION RenewLoan WITH Loan.barcode="${barcode}", renewDays=${durationDays}`
-      : `ACTION CheckoutBook WITH Book.title="${bookTitle}", Patron.name="${personName}"`;
-  const graphqlTemplate =
-    result.action.id === "action-return"
-      ? `mutation ReturnBook($barcode: String!) {
-  returnBook(input: { barcode: $barcode }) {
-    loanId
-    loanStatus
-    holdingStatus
-    actualReturnDate
-  }
-}`
-      : result.action.id === "action-renew"
-      ? `mutation RenewLoan($barcode: String!, $renewDays: Int!) {
-  renewLoan(input: { barcode: $barcode, renewDays: $renewDays }) {
-    loanId
-    dueDate
-    renewalCount
-  }
-}`
-      : `mutation CheckoutBook($bookTitle: String!, $patronName: String!) {
-  checkoutBook(input: { bookTitle: $bookTitle, patronName: $patronName }) {
-    loanId
-    dueDate
-    loanStatus
-  }
-}`;
-  let templateVars: Record<string, string>;
-  if (result.action.id === "action-return") {
-    templateVars = { barcode };
-  } else if (result.action.id === "action-renew") {
-    templateVars = { barcode, renewDays: String(durationDays) };
-  } else {
-    templateVars = { bookTitle, patronName: personName };
-  }
-  const rdf =
-    result.action.id === "action-return"
-      ? `# 归还事件语义网络
-lib:Event_Return_001 a lib:ReturnEvent ;
-    lib:actor lib:Person_${personName} ;
-    lib:object lib:Holding_${barcode} ;
-    lib:actualReturnTime "${startTime}"^^xsd:dateTime ;
-    lib:location lib:Branch_海淀馆 ;
-    lib:permittedBy lib:Rule_${actionRuleName} ;
-    lib:updatesLoan lib:Loan_${barcode} .
-
-lib:Loan_${barcode} a lib:Loan ;
-    lib:holding lib:Holding_${barcode} ;
-    lib:borrower lib:Person_${personName} ;
-    lib:loanStatus "RETURNED" ;
-    lib:actualReturnDate "${startTime}"^^xsd:dateTime .
-
-lib:Holding_${barcode} a lib:PhysicalBook ;
-    lib:barcode "${barcode}" ;
-    lib:holdingStatus "AVAILABLE" ;
-    lib:shelfLocation "I247.5/12" .`
-      : result.action.id === "action-renew"
-      ? `# 续借事件语义网络
-lib:Event_Renew_001 a lib:RenewEvent ;
-    lib:actor lib:Person_${personName} ;
-    lib:object lib:Loan_${barcode} ;
-    lib:startTime "${startTime}"^^xsd:dateTime ;
-    lib:endTime "${endTime}"^^xsd:dateTime ;
-    lib:permittedBy lib:Rule_${actionRuleName} .
-
-lib:Loan_${barcode} a lib:Loan ;
-    lib:holding lib:Holding_${barcode} ;
-    lib:borrower lib:Person_${personName} ;
-    lib:dueDate "${endTime}"^^xsd:dateTime ;
-    lib:renewalCount 1 .
-
-lib:Holding_${barcode} a lib:PhysicalBook ;
-    lib:barcode "${barcode}" ;
-    dc:title "${bookTitle}" .`
-      : `# 不仅仅是记录，而是语义网络
-lib:Event_Loan_001 a lib:BorrowingEvent ;
-    lib:actor lib:Person_${personName} ;
-    lib:object lib:Book_${bookTitle} ;
-    lib:startTime "${startTime}"^^xsd:dateTime ;
-    lib:endTime "${endTime}"^^xsd:dateTime ;
-    lib:location lib:Branch_海淀馆 ;
-    lib:permittedBy lib:Rule_${actionRuleName} .
-
-lib:Person_${personName} a lib:Member ;
-    lib:name "${personName}" ;
-    lib:hasCreditScore 850 ;
-    lib:memberSince "2020-01-15"^^xsd:date .
-
-lib:Book_${bookTitle} a lib:PhysicalBook ;
-    dc:title "${bookTitle}" ;
-    lib:instanceOf lib:Work_${bookTitle}原著 ;
-    lib:shelfLocation "I247.5/12" ;
-    lib:barcode "${barcode}" .`;
-
-  const swrl =
-    result.action.id === "action-return"
-      ? `# SWRL 规则表达（归还一致性）
-lib:Rule_归还状态同步 a lib:BusinessRule ;
-    lib:if """
-        ?event a lib:ReturnEvent .
-        ?event lib:updatesLoan ?loan .
-        ?loan a lib:Loan .
-        ?loan lib:holding ?holding .
-    """ ;
-    lib:then """
-        ?loan lib:loanStatus "RETURNED" .
-        ?holding lib:holdingStatus "AVAILABLE" .
-    """ .`
-      : `# SWRL 规则表达
-lib:Rule_逾期滞纳金 a lib:BusinessRule ;
-    lib:if """
-        ?loan a lib:Loan .
-        ?loan lib:dueDate ?due .
-        ?loan lib:actualReturnDate ?actual .
-        ?loan lib:bookPrice ?price .
-        swrlb:subtractDate(?diff, ?actual, ?due) .
-        swrlb:greaterThan(?diff, 3) .
-    """ ;
-    lib:then """
-        ?fine a lib:Fine .
-        ?fine lib:basedOn ?loan .
-        ?fine lib:amount swrlb:multiply(?price, 0.05) .
-        ?fine lib:reason "逾期3天以上" .
-    """ .`;
-
-  const owl =
-    result.action.id === "action-return"
-      ? `Prefix: lib: <http://example.org/library#>
-Prefix: owl: <http://www.w3.org/2002/07/owl#>
-Prefix: rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-Ontology: <http://example.org/library>
-
-Class: lib:ReturnEvent
-    SubClassOf: lib:Event
-    Annotations: rdfs:label "归还事件"
-
-Class: lib:Loan
-    SubClassOf: owl:Thing`
-      : `Prefix: lib: <http://example.org/library#>
-Prefix: owl: <http://www.w3.org/2002/07/owl#>
-Prefix: rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-Ontology: <http://example.org/library>
-
-Class: lib:BorrowingEvent
-    SubClassOf: lib:Event
-    Annotations: rdfs:label "借阅事件"
-
-Class: lib:Book
-    SubClassOf: owl:Thing`;
 
   return {
     query,
     generatedAt: new Date().toISOString(),
-    semanticScenario:
-      result.action.id === "action-return"
-        ? `系统识别为“归还图书”场景：通过条码定位馆藏副本，更新对应借阅记录为已归还，并将馆藏状态恢复为可借。`
-        : result.action.id === "action-renew"
-        ? `系统识别为“续借”场景：针对指定借阅记录延长应还日期，并执行续借规则校验。`
-        : `系统识别为“借阅”场景：基于读者与图书对象创建借阅事件，并派生应还时间与规则约束。`,
-    rdf,
-    owl,
-    swrl,
-    dsl,
+    semanticScenario: "系统将用户输入解析为动作、实体与参数，并生成可执行的模板预览。",
+    rdf: `lib:Query a lib:SemanticQuery ;\n  lib:text "${escaped}" .`,
+    owl: `Class: lib:SemanticQuery\n  Annotations: rdfs:label "语义查询"`,
+    swrl: `lib:Rule_Generic a lib:BusinessRule ;\n  lib:then """ true """ .`,
+    dsl: `ACTION ${result.action.name || "GenericAction"} WITH Query.text="${escaped}"`,
     graphqlTemplate,
     templateVars,
     sql: undefined,
@@ -1624,10 +1247,9 @@ function EmptyParseResult() {
       <div className="mt-6 space-y-2 text-left w-full">
         <p className="text-[10px] text-[#6b6b6b] mb-2">支持的查询示例:</p>
         {[
-          "借阅《三体》这本书",
-          "还书，条码号 ABC123",
-          "我要创建一个采购订单给供应商 S1001",
-          "采购申请审批通过后，收货入库",
+          "为缺料预警生成两套请购方案并推演链路",
+          "为临期原材料生成处置方案并推演链路",
+          "查询某个对象的关键属性与关系",
         ].map((example, idx) => (
           <div key={idx} className="flex items-center gap-2 text-[11px] text-[#4a4a4a]">
             <ChevronRight className="w-3 h-3" />
