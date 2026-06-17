@@ -1,0 +1,725 @@
+"use client";
+
+import React from "react";
+import { Bot, User, Send } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useConsultingStore, useOntologyStore, useSelectionStore } from "@/stores";
+import { ChangeConfirmDialog, type ChangeConfirmSection } from "@/components/consulting/change-confirm-dialog";
+import { toPascalCase } from "@/lib/utils";
+import type { Cardinality } from "@/lib/types/ontology";
+import { CASE_PLAYBOOKS } from "@/lib/case-playbook/scenarios";
+import { Streamdown } from "streamdown";
+import { mermaid } from "@streamdown/mermaid";
+import { cjk } from "@streamdown/cjk";
+
+interface Message {
+  role: "user" | "assistant";
+  content: string;
+}
+
+function extractFirstJsonCodeBlock(text: string): any | null {
+  const match = text.match(/```json\s*([\s\S]*?)```/i);
+  if (!match?.[1]) return null;
+  const raw = match[1].trim();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeEntityScale(value: any): "S" | "M" | "L" | "XL" | null {
+  if (value === "S" || value === "M" || value === "L" || value === "XL") return value;
+  return null;
+}
+
+function normalizeCardinality(value: any): Cardinality {
+  if (value === "ONE_TO_ONE" || value === "ONE_TO_MANY" || value === "MANY_TO_ONE" || value === "MANY_TO_MANY") return value;
+  return "ONE_TO_ONE";
+}
+
+function uniquePascalCase(base: string, used: Set<string>) {
+  let next = base;
+  let i = 2;
+  while (used.has(next) || !next) {
+    next = `${base}${i}`;
+    i += 1;
+  }
+  used.add(next);
+  return next;
+}
+
+export function ConsultingChatPanel() {
+  const [input, setInput] = React.useState("");
+  const [messages, setMessages] = React.useState<Message[]>([]);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [datasets, setDatasets] = React.useState<Array<{ id: string; name?: string; entities?: string[] }>>([]);
+  const [datasetId, setDatasetId] = React.useState<string>("erp-demo");
+  const [datasetEntity, setDatasetEntity] = React.useState<string>("PurchaseRequisition");
+  const [datasetField, setDatasetField] = React.useState<string>("materialCode");
+  const [datasetValue, setDatasetValue] = React.useState<string>("A001");
+  const [datasetEvidenceText, setDatasetEvidenceText] = React.useState<string>("");
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
+  const [confirmSections, setConfirmSections] = React.useState<ChangeConfirmSection[]>([]);
+  const confirmActionsRef = React.useRef<Map<string, () => Promise<void> | void>>(new Map());
+  const createdObjectTypeByNameRef = React.useRef<Map<string, string>>(new Map());
+
+  const {
+    domains,
+    selectedDomainId,
+    addDomain,
+    updateDomain,
+    toggleEntityInDomain,
+    setEntityScale,
+    selectDomain,
+    casePlaybook,
+    setDraftMessage,
+  } = useConsultingStore();
+  const domain = React.useMemo(() => domains.find((d) => d.id === selectedDomainId) || null, [domains, selectedDomainId]);
+  const { objectTypes, linkTypes, actionTypes, dataFlows, businessRules, aiModels, analysisInsights, scenario, addObjectType, addLinkType } =
+    useOntologyStore();
+  const { selectedObjectTypeId, selectedLinkTypeId } = useSelectionStore();
+
+  const validDomainObjectTypeIds = React.useMemo(() => {
+    if (!domain) return [];
+    const exist = new Set(objectTypes.map((o) => o.id));
+    return (domain.objectTypeIds || []).filter((id) => exist.has(id));
+  }, [domain, objectTypes]);
+
+  const isDomainStale = React.useMemo(() => {
+    if (!domain) return false;
+    const hasConfig = (domain.objectTypeIds || []).length > 0;
+    return hasConfig && validDomainObjectTypeIds.length === 0 && objectTypes.length > 0;
+  }, [domain, validDomainObjectTypeIds.length, objectTypes.length]);
+
+  React.useEffect(() => {
+    // 导入/替换本体后，如果业务域与当前本体无交集，说明是遗留状态：自动取消选中，避免 LLM 输出“不匹配”提示
+    if (isDomainStale && selectedDomainId) {
+      selectDomain(null);
+    }
+  }, [isDomainStale, selectedDomainId, selectDomain]);
+
+  const context = React.useMemo(() => {
+    const domainObjectTypeIds = domain && !isDomainStale ? validDomainObjectTypeIds : [];
+    const objectTypeSubset = domainObjectTypeIds.length > 0 ? objectTypes.filter((o) => domainObjectTypeIds.includes(o.id)) : objectTypes;
+    const linkTypeSubset =
+      domainObjectTypeIds.length > 0
+        ? linkTypes.filter((l) => domainObjectTypeIds.includes(l.sourceTypeId) || domainObjectTypeIds.includes(l.targetTypeId))
+        : linkTypes;
+
+    return {
+      scenario,
+      domain: domain && !isDomainStale
+        ? {
+            id: domain.id,
+            name: domain.name,
+            description: domain.description,
+            objectTypeIds: validDomainObjectTypeIds,
+            entityScales: Object.fromEntries(
+              Object.entries(domain.entityScales || {}).filter(([k]) => validDomainObjectTypeIds.includes(k))
+            ),
+          }
+        : null,
+      selection: {
+        selectedObjectTypeId,
+        selectedLinkTypeId,
+      },
+      ontology: {
+        objectTypes: objectTypeSubset,
+        linkTypes: linkTypeSubset,
+        actionTypes,
+        dataFlows,
+        businessRules,
+        aiModels,
+        analysisInsights,
+      },
+      caseContext: (() => {
+        const selectedCaseId = casePlaybook?.selectedCaseId;
+        const selectedStepId = casePlaybook?.selectedStepId;
+        if (!selectedCaseId || !selectedStepId) return null;
+        const c = CASE_PLAYBOOKS.find((x) => x.caseId === selectedCaseId);
+        const step = c?.steps.find((s) => s.stepId === selectedStepId);
+        if (!c || !step) return null;
+        const edited = casePlaybook?.editedIntentTextByStepId?.[selectedStepId] || "";
+        return {
+          caseId: c.caseId,
+          caseTitle: c.title,
+          stepId: step.stepId,
+          stepTitle: step.title,
+          intentText: (edited || step.intentText || "").trim(),
+          actionId: step.actionId,
+          relatedDatasetNames: step.relatedDatasetNames,
+          relatedMetricNames: step.relatedMetricNames || [],
+          notes: step.notes || "",
+        };
+      })(),
+    };
+  }, [
+    scenario,
+    domain,
+    isDomainStale,
+    validDomainObjectTypeIds,
+    selectedObjectTypeId,
+    selectedLinkTypeId,
+    objectTypes,
+    linkTypes,
+    actionTypes,
+    dataFlows,
+    businessRules,
+    aiModels,
+    analysisInsights,
+    casePlaybook,
+  ]);
+
+  React.useEffect(() => {
+    const draft = casePlaybook?.draftMessage || "";
+    if (!draft.trim()) return;
+    setInput((prev) => (prev.trim() ? prev : draft));
+    setDraftMessage("");
+  }, [casePlaybook?.draftMessage, setDraftMessage]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch("/api/datasets/list")
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        const next = Array.isArray(data?.datasets) ? data.datasets : [];
+        setDatasets(next);
+        if (!next.some((d: any) => d?.id === datasetId) && next[0]?.id) {
+          setDatasetId(next[0].id);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [datasetId]);
+
+  const runDatasetQuery = async () => {
+    setDatasetEvidenceText("查询中…");
+    try {
+      const resp = await fetch("/api/datasets/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          datasetId,
+          entity: datasetEntity,
+          where:
+            datasetField && datasetValue
+              ? { op: "and", conditions: [{ field: datasetField, op: "eq", value: datasetValue }] }
+              : undefined,
+          limit: 10,
+        }),
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok) throw new Error(data?.error || "查询失败");
+      const ev = data?.evidence;
+      const text = ev
+        ? `命中：${ev.matchedCount} 行（返回 ${ev.returnedCount} 行）\nPseudo SQL：${ev.pseudoSql}\n样例：\n${JSON.stringify(ev.sampleRows, null, 2)}`
+        : "（无 evidence）";
+      setDatasetEvidenceText(text);
+    } catch (e: any) {
+      setDatasetEvidenceText(`查询失败：${e?.message || "unknown"}`);
+    }
+  };
+
+  const handleSend = async () => {
+    if (!input.trim()) return;
+
+    const userMessage: Message = { role: "user", content: input };
+    let assistantIndex = -1;
+    setMessages((prev) => {
+      assistantIndex = prev.length + 1;
+      return [...prev, userMessage, { role: "assistant", content: "" }];
+    });
+    setInput("");
+    setIsLoading(true);
+
+    try {
+      const response = await fetch("/api/consulting-chat/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userMessage.content,
+          context,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        const detail = data?.detail ? `\n${data.detail}` : "";
+        throw new Error((data?.error || "请求失败") + detail);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("SSE 响应不可读");
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let assistantText = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() || "";
+        for (const part of parts) {
+          const line = part
+            .split("\n")
+            .map((x) => x.trim())
+            .find((x) => x.startsWith("data: "));
+          if (!line) continue;
+          const jsonText = line.slice("data: ".length);
+          let evt: any = null;
+          try {
+            evt = JSON.parse(jsonText);
+          } catch {
+            continue;
+          }
+
+          if (evt?.type === "assistant_delta") {
+            assistantText += String(evt?.delta || "");
+            setMessages((prev) => {
+              const next = [...prev];
+              const current = next[assistantIndex];
+              if (current?.role === "assistant") next[assistantIndex] = { ...current, content: assistantText };
+              return next;
+            });
+          } else if (evt?.type === "assistant_done") {
+            assistantText = String(evt?.text || assistantText || "（空响应）");
+            setMessages((prev) => {
+              const next = [...prev];
+              const current = next[assistantIndex];
+              if (current?.role === "assistant") next[assistantIndex] = { ...current, content: assistantText };
+              return next;
+            });
+          } else if (evt?.type === "error") {
+            const detail = evt?.detail ? `\n${evt.detail}` : "";
+            throw new Error(String(evt?.error || "请求失败") + detail);
+          }
+        }
+      }
+
+      const plan = typeof assistantText === "string" ? extractFirstJsonCodeBlock(assistantText) : null;
+      if (plan) {
+        const usedObjectApiNames = new Set(objectTypes.map((o) => o.apiName));
+        const usedLinkApiNames = new Set(linkTypes.map((l) => l.apiName));
+        const actions = new Map<string, () => Promise<void> | void>();
+        const sections: ChangeConfirmSection[] = [];
+        createdObjectTypeByNameRef.current = new Map();
+
+        const ensureObjectTypeId = (entity: any) => {
+          const displayName = (entity?.displayName || entity?.name || entity?.title || "").toString().trim();
+          const description = (entity?.description || "").toString().trim() || undefined;
+          const explicitId = (entity?.objectTypeId || entity?.existingObjectTypeId || entity?.id || "").toString().trim();
+          if (explicitId && objectTypes.some((o) => o.id === explicitId)) return explicitId;
+
+          if (!displayName) return null;
+          const cached = createdObjectTypeByNameRef.current.get(displayName);
+          if (cached) return cached;
+
+          const existingByName = objectTypes.find((o) => o.displayName === displayName);
+          if (existingByName) return existingByName.id;
+
+          const base = toPascalCase(displayName);
+          const apiName = uniquePascalCase(base, usedObjectApiNames);
+          const ot = addObjectType({
+            displayName,
+            apiName,
+            description,
+            visibility: "PROJECT",
+            primaryKey: "",
+            titleKey: "",
+            properties: [],
+            layer: "SEMANTIC",
+          });
+          createdObjectTypeByNameRef.current.set(displayName, ot.id);
+          return ot.id;
+        };
+
+        const proposedDomains: any[] = Array.isArray(plan?.proposedDomains) ? plan.proposedDomains : [];
+        if (proposedDomains.length) {
+          const items = proposedDomains.map((d, idx) => {
+            const name = (d?.name || `业务域 ${idx + 1}`).toString().trim();
+            const id = `domain:${idx}:${name}`;
+            const description = (d?.description || "").toString().trim() || undefined;
+            const entities = Array.isArray(d?.entities) ? d.entities : Array.isArray(d?.objectTypes) ? d.objectTypes : [];
+
+            actions.set(id, async () => {
+              const domainId = addDomain(name);
+              if (description) updateDomain(domainId, { description });
+
+              for (const e of entities) {
+                const otId = ensureObjectTypeId(e);
+                if (!otId) continue;
+                toggleEntityInDomain(domainId, otId);
+                const scale = normalizeEntityScale(e?.scale) || normalizeEntityScale(e?.entityScale);
+                if (scale) setEntityScale(domainId, otId, scale);
+              }
+
+              selectDomain(domainId);
+            });
+
+            const entityCount = entities.length;
+            return {
+              id,
+              title: name,
+              description: [description, entityCount ? `包含实体：${entityCount} 个` : ""].filter(Boolean).join("\n") || undefined,
+              tone: "create" as const,
+              defaultSelected: true,
+            };
+          });
+
+          sections.push({
+            key: "domains",
+            title: "业务域（将创建到规划面板）",
+            description: "勾选后会创建业务域，并将实体加入该业务域（必要时补齐实体类型）。",
+            items,
+          });
+        }
+
+        const entityScaleAdjustments = plan?.entityScaleAdjustments;
+        const scaleItemsRaw: any[] = Array.isArray(entityScaleAdjustments)
+          ? entityScaleAdjustments
+          : entityScaleAdjustments && typeof entityScaleAdjustments === "object"
+            ? Object.entries(entityScaleAdjustments).map(([k, v]) => ({ objectTypeId: k, scale: v }))
+            : [];
+
+        if (scaleItemsRaw.length) {
+          const items = scaleItemsRaw.map((x, idx) => {
+            const objectTypeId = (x?.objectTypeId || x?.id || "").toString().trim();
+            const scale = normalizeEntityScale(x?.scale);
+            const name =
+              objectTypeId && objectTypes.some((o) => o.id === objectTypeId)
+                ? objectTypes.find((o) => o.id === objectTypeId)?.displayName || objectTypeId
+                : (x?.displayName || x?.name || objectTypeId || `调整 ${idx + 1}`).toString().trim();
+            const id = `scale:${idx}:${objectTypeId || name}`;
+            const reason = (x?.reason || "").toString().trim() || undefined;
+            const disabled = !selectedDomainId || !objectTypeId || !scale;
+
+            if (!disabled) {
+              actions.set(id, async () => {
+                setEntityScale(selectedDomainId!, objectTypeId, scale);
+              });
+            }
+
+            return {
+              id,
+              title: `${name} → ${scale || "（缺少规模）"}`,
+              description: reason,
+              tone: disabled ? ("warn" as const) : ("update" as const),
+              defaultSelected: !disabled,
+              disabled,
+            };
+          });
+
+          sections.push({
+            key: "scales",
+            title: "规模调整（当前选中业务域）",
+            description: selectedDomainId ? "勾选后会更新当前选中业务域的实体规模。" : "需要先选中一个业务域才能应用规模调整。",
+            items,
+          });
+        }
+
+        const missingEntities = Array.isArray(plan?.missingEntities) ? plan.missingEntities : [];
+        if (missingEntities.length) {
+          const items = missingEntities.map((e: any, idx: number) => {
+            const displayName = (typeof e === "string" ? e : e?.displayName || e?.name || e?.title || `实体 ${idx + 1}`).toString().trim();
+            const description = typeof e === "string" ? undefined : (e?.description || "").toString().trim() || undefined;
+            const id = `entity:${idx}:${displayName}`;
+
+            actions.set(id, async () => {
+              ensureObjectTypeId({ displayName, description });
+            });
+
+            return {
+              id,
+              title: displayName,
+              description,
+              tone: "create" as const,
+              defaultSelected: true,
+            };
+          });
+
+          sections.push({
+            key: "entities",
+            title: "缺失实体（将创建到本体）",
+            description: "勾选后会创建对象类型（ObjectType）。你可以之后再补充属性与规则。",
+            items,
+          });
+        }
+
+        const missingLinks = Array.isArray(plan?.missingLinks) ? plan.missingLinks : [];
+        if (missingLinks.length) {
+          const items = missingLinks.map((l: any, idx: number) => {
+            const label = (typeof l === "string" ? l : l?.displayName || l?.label || l?.name || `关系 ${idx + 1}`).toString().trim();
+            const source = typeof l === "string" ? null : l?.source || l?.sourceTypeId || l?.from;
+            const target = typeof l === "string" ? null : l?.target || l?.targetTypeId || l?.to;
+            const card = normalizeCardinality(typeof l === "string" ? null : l?.cardinality);
+            const id = `link:${idx}:${label}`;
+            const disabled = !source || !target;
+
+            if (!disabled) {
+              actions.set(id, async () => {
+                const sourceId = typeof source === "string" ? ensureObjectTypeId({ objectTypeId: source, displayName: source }) : null;
+                const targetId = typeof target === "string" ? ensureObjectTypeId({ objectTypeId: target, displayName: target }) : null;
+                if (!sourceId || !targetId) return;
+                const apiName = uniquePascalCase(toPascalCase(label), usedLinkApiNames);
+                addLinkType({
+                  apiName,
+                  displayName: label,
+                  description: typeof l === "string" ? "" : (l?.description || "").toString(),
+                  sourceTypeId: sourceId,
+                  targetTypeId: targetId,
+                  cardinality: card,
+                  foreignKeyPropertyId: "",
+                  properties: [],
+                  visibility: "PROJECT",
+                  layer: "SEMANTIC",
+                });
+              });
+            }
+
+            const descParts: string[] = [];
+            if (typeof l !== "string") {
+              const s = (l?.sourceDisplayName || l?.sourceName || "").toString().trim();
+              const t = (l?.targetDisplayName || l?.targetName || "").toString().trim();
+              if (s || t) descParts.push([s, t].filter(Boolean).join(" → "));
+              if (l?.cardinality) descParts.push(`基数：${l.cardinality}`);
+              const d = (l?.description || "").toString().trim();
+              if (d) descParts.push(d);
+            }
+
+            return {
+              id,
+              title: label,
+              description: descParts.join("\n") || (disabled ? "缺少 source/target，无法自动创建" : undefined),
+              tone: disabled ? ("warn" as const) : ("create" as const),
+              defaultSelected: !disabled,
+              disabled,
+            };
+          });
+
+          sections.push({
+            key: "links",
+            title: "缺失关系（将创建到本体）",
+            description: "勾选后会创建关系类型（LinkType）。foreignKeyPropertyId 默认留空，后续可补齐映射。",
+            items,
+          });
+        }
+
+        const nextQuestions = Array.isArray(plan?.nextQuestions) ? plan.nextQuestions : [];
+        if (nextQuestions.length) {
+          const items = nextQuestions.map((q: any, idx: number) => ({
+            id: `q:${idx}:${q}`,
+            title: (q || `问题 ${idx + 1}`).toString(),
+            tone: "neutral" as const,
+            defaultSelected: false,
+            disabled: true,
+          }));
+          sections.push({
+            key: "questions",
+            title: "建议追问（仅预览）",
+            description: "这些问题不会自动写入，仅用于继续对话推进。",
+            items,
+          });
+        }
+
+        if (sections.length) {
+          confirmActionsRef.current = actions;
+          setConfirmSections(sections);
+          setConfirmOpen(true);
+        }
+      }
+    } catch (error: any) {
+      const msg = error?.message || "抱歉，生成失败，请重试。";
+      setMessages((prev) => {
+        const next = [...prev];
+        if (assistantIndex >= 0 && next[assistantIndex]?.role === "assistant") {
+          next[assistantIndex] = { ...next[assistantIndex], content: msg };
+          return next;
+        }
+        return [...prev, { role: "assistant", content: msg }];
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const title = domain?.name ? `AI 咨询 · ${domain.name}` : "AI 咨询";
+
+  return (
+    <div className="flex flex-col h-full bg-[#0d0d0d] text-[#e0e0e0]">
+      <ChangeConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="确认规划变更"
+        description="AI 已给出可落地的规划建议。勾选你希望生效的变更，系统将自动创建/更新对应资产。"
+        sections={confirmSections}
+        onConfirm={async (selectedIds) => {
+          const actionMap = confirmActionsRef.current;
+          const ordered = confirmSections.flatMap((s) => s.items.map((i) => i.id)).filter((id) => selectedIds.includes(id));
+          for (const id of ordered) {
+            const fn = actionMap.get(id);
+            if (fn) await fn();
+          }
+          setMessages((prev) => [...prev, { role: "assistant", content: `已应用 ${ordered.length} 项变更。` }]);
+        }}
+      />
+      <div className="flex-none p-4 border-b border-[#2d2d2d] bg-[#161614]">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Bot className="w-4 h-4 text-[#8B5CF6]" />
+              {title}
+            </h2>
+            <p className="text-[11px] text-[#808080] mt-1">基于当前本体与业务域上下文，持续讨论边界、规模与缺口</p>
+          </div>
+          {domain && (
+            <Badge className="text-[10px] bg-[#8B5CF6]/20 text-[#c4b5fd] border-0">{domain.objectTypeIds.length} 实体</Badge>
+          )}
+        </div>
+      </div>
+
+      <div className="flex-none p-4 border-b border-[#2d2d2d] bg-[#0d0d0d]">
+        <Card className="p-3 bg-[#111] border-[#2d2d2d]">
+          <div className="text-xs text-[#a0a0a0] mb-2">数据集查询（最小联调入口）</div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs text-[#a0a0a0]">数据集</Label>
+              <Select value={datasetId} onValueChange={setDatasetId}>
+                <SelectTrigger className="h-8 bg-[#0d0d0d] border-[#2d2d2d] text-[#e5e5e5]">
+                  <SelectValue placeholder="选择数据集" />
+                </SelectTrigger>
+                <SelectContent className="bg-[#0d0d0d] border-[#2d2d2d]">
+                  {datasets.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name || d.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-[#a0a0a0]">实体（ObjectType apiName）</Label>
+              <Input
+                value={datasetEntity}
+                onChange={(e) => setDatasetEntity(e.target.value)}
+                className="h-8 bg-[#0d0d0d] border-[#2d2d2d] text-[#e5e5e5]"
+                placeholder="例如 PurchaseRequisition"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-[#a0a0a0]">过滤字段</Label>
+              <Input
+                value={datasetField}
+                onChange={(e) => setDatasetField(e.target.value)}
+                className="h-8 bg-[#0d0d0d] border-[#2d2d2d] text-[#e5e5e5]"
+                placeholder="例如 materialCode"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs text-[#a0a0a0]">过滤值（eq）</Label>
+              <Input
+                value={datasetValue}
+                onChange={(e) => setDatasetValue(e.target.value)}
+                className="h-8 bg-[#0d0d0d] border-[#2d2d2d] text-[#e5e5e5]"
+                placeholder="例如 A001"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 mt-2">
+            <Button
+              variant="outline"
+              className="h-8 bg-[#2d2d2d] border-[#3d3d3d] text-[#e5e5e5] hover:bg-[#3d3d3d]"
+              onClick={runDatasetQuery}
+            >
+              运行查询
+            </Button>
+            <div className="text-[11px] text-[#6b7280]">
+              说明：该入口用于联调数据集 API；后续会由 Planner 自动生成 query spec 并消费 evidence。
+            </div>
+          </div>
+
+          {datasetEvidenceText ? (
+            <pre className="mt-2 text-[11px] leading-relaxed whitespace-pre-wrap text-[#cfcfcf] bg-[#0b0b0b] border border-[#2d2d2d] rounded p-2 max-h-48 overflow-auto">
+              {datasetEvidenceText}
+            </pre>
+          ) : null}
+        </Card>
+      </div>
+
+      <ScrollArea className="flex-1 p-4">
+        <div className="space-y-4 pb-4">
+          {messages.length === 0 && (
+            <div className="text-center text-[#6b6b6b] text-sm mt-10">
+              你可以问：“这个业务域的边界是什么？”、“哪些实体规模应该是 L？”、“还缺哪些关键关系？”。
+            </div>
+          )}
+
+          {messages.map((msg, idx) => (
+            <div key={idx} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  msg.role === "user" ? "bg-[#2563EB] text-white" : "bg-[#8B5CF6] text-white"
+                }`}
+              >
+                {msg.role === "user" ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
+              </div>
+              <div
+                className={`max-w-[86%] p-3 rounded-lg ${
+                  msg.role === "user"
+                    ? "bg-[#2563EB]/20 border border-[#2563EB]/30 text-white"
+                    : "bg-[#141414] border border-[#2d2d2d] text-[#d0d0d0]"
+                }`}
+              >
+                {msg.role === "assistant" ? (
+                  <div className="prose prose-invert max-w-none prose-pre:bg-[#0b0b0b] prose-pre:border prose-pre:border-[#2d2d2d] prose-pre:rounded-md">
+                    <Streamdown plugins={{ mermaid, cjk }} isAnimating={isLoading && idx === messages.length - 1}>
+                      {msg.content || (isLoading && idx === messages.length - 1 ? "AI 正在思考…" : "")}
+                    </Streamdown>
+                  </div>
+                ) : (
+                  <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+                )}
+              </div>
+            </div>
+          ))}
+
+        </div>
+      </ScrollArea>
+
+      <div className="flex-none p-4 border-t border-[#2d2d2d] bg-[#161614]">
+        <div className="flex items-center gap-2">
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder={domain ? "输入问题，继续追问或补充约束..." : "先选择/创建业务域，再开始咨询..."}
+            className="flex-1 bg-[#0d0d0d] border-[#3d3d3d] text-white placeholder:text-[#6b6b6b]"
+            disabled={isLoading}
+          />
+          <Button onClick={handleSend} disabled={isLoading || !input.trim()} className="bg-[#8B5CF6] hover:bg-[#7C3AED] text-white">
+            <Send className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

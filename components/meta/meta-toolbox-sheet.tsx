@@ -31,8 +31,6 @@ function downloadText(filename: string, text: string, mime = "application/json")
 }
 
 function scenarioLabel(value: string) {
-  if (value === "library") return "图书馆";
-  if (value === "erp") return "ERP";
   return "自定义";
 }
 

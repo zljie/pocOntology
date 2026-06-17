@@ -14,17 +14,13 @@ import {
   Boxes,
   FilePlus,
   Users,
+  MessageSquare,
+  PenTool,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -35,13 +31,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useOntologyStore, useSelectionStore, useProposalStore } from "@/stores";
+import { useOntologyStore, useSelectionStore, useProposalStore, useOnboardingStore } from "@/stores";
 import { useUIStore } from "@/stores";
 import { SemanticQueryInput } from "@/components/semantic-query/semantic-query-input";
 import { BusinessScenarioSandbox } from "@/components/scenario-sandbox/business-scenario-sandbox";
 import { OrmTestPanel } from "@/components/orm-test/orm-test-panel";
 import { MetaToolboxSheet } from "@/components/meta/meta-toolbox-sheet";
-import { createNeo4jDatabaseClient, upsertMetaToNeo4jClient } from "@/lib/neo4j/client";
+import { createNeo4jDatabaseClient, saveProjectOnboardingStateClient, upsertMetaToNeo4jClient } from "@/lib/neo4j/client";
 import type { MetaCore } from "@/lib/meta/meta-core";
 
 function isValidNeo4jDbName(name: string) {
@@ -58,14 +54,24 @@ export function Header() {
     aiModels,
     analysisInsights,
     scenario,
-    loadSampleData,
     clearAll: clearOntology,
     neo4jProject,
     setNeo4jProject,
   } = useOntologyStore();
   const { clearAll: clearSelection } = useSelectionStore();
   const { clearAll: clearProposals } = useProposalStore();
-  const { setShowImportDialog, showProposalBanner } = useUIStore();
+  const {
+    setShowImportDialog,
+    setShowOsiImportDialog,
+    setShowStartupImportDialog,
+    showProposalBanner,
+    workMode,
+    setWorkMode,
+    setCanvasViewMode,
+    openRightPanel,
+    enterProjectOnboarding,
+  } = useUIStore();
+  const { initProjectOnboarding } = useOnboardingStore();
   const [showSemanticQuery, setShowSemanticQuery] = useState(false);
   const [showScenarioSandbox, setShowScenarioSandbox] = useState(false);
   const [showOrmTest, setShowOrmTest] = useState(false);
@@ -113,6 +119,10 @@ export function Header() {
       clearSelection();
       clearProposals();
       setNeo4jProject({ dbName, displayName });
+      const onboarding = initProjectOnboarding(dbName);
+      enterProjectOnboarding();
+      openRightPanel();
+      saveProjectOnboardingStateClient({ database: dbName, state: onboarding }).catch(() => {});
       setShowNewCanvasDialog(false);
     } catch (e: any) {
       setNewCanvasError(e?.message || "创建 Neo4j 数据库失败");
@@ -215,6 +225,39 @@ export function Header() {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-md border border-[#3d3d3d] overflow-hidden mr-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`rounded-none text-xs ${
+                workMode === "ONTOLOGY_DESIGN"
+                  ? "bg-[#2d2d2d] text-white"
+                  : "text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
+              }`}
+              onClick={() => setWorkMode("ONTOLOGY_DESIGN")}
+            >
+              <PenTool className="w-3.5 h-3.5 mr-1" />
+              本体设计模式
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`rounded-none text-xs ${
+                workMode === "CONSULTING"
+                  ? "bg-[#2d2d2d] text-white"
+                  : "text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
+              }`}
+              onClick={() => {
+                setWorkMode("CONSULTING");
+                setCanvasViewMode("KNOWLEDGE_GRAPH");
+                openRightPanel();
+              }}
+            >
+              <MessageSquare className="w-3.5 h-3.5 mr-1" />
+              咨询模式
+            </Button>
+          </div>
+
           <Button
             variant="default"
             size="sm"
@@ -268,6 +311,20 @@ export function Header() {
                 variant="ghost"
                 size="icon"
                 className="text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
+                onClick={() => setShowOsiImportDialog(true)}
+              >
+                <FilePlus className="w-4 h-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>导入 OSI YAML</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
                 onClick={() => setShowMetaToolbox(true)}
               >
                 <Download className="w-4 h-4" />
@@ -304,40 +361,14 @@ export function Header() {
             新建本体
           </Button>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
-              >
-                加载示例
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40 bg-[#161614] border-[#3d3d3d] text-[#a0a0a0]">
-              <DropdownMenuItem 
-                onClick={() => loadSampleData('library')}
-                className="hover:bg-[#2d2d2d] hover:text-white focus:bg-[#2d2d2d] focus:text-white cursor-pointer"
-              >
-                <Layers className="w-4 h-4 mr-2" />
-                图书馆管理系统
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => loadSampleData('erp')}
-                className="hover:bg-[#2d2d2d] hover:text-white focus:bg-[#2d2d2d] focus:text-white cursor-pointer"
-              >
-                <Boxes className="w-4 h-4 mr-2" />
-                ERP采购业务模块
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => loadSampleData('sap_hcm')}
-                className="hover:bg-[#2d2d2d] hover:text-white focus:bg-[#2d2d2d] focus:text-white cursor-pointer"
-              >
-                <Users className="w-4 h-4 mr-2" />
-                SAP HCM 模块
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-[#a0a0a0] hover:text-white hover:bg-[#2d2d2d]"
+            onClick={() => setShowStartupImportDialog(true)}
+          >
+            加载示例
+          </Button>
 
           <div className="w-px h-6 bg-[#3d3d3d] mx-1" />
 
@@ -421,7 +452,7 @@ export function Header() {
               <Input
                 value={newProjectDbName}
                 onChange={(e) => setNewProjectDbName(e.target.value)}
-                placeholder="例如：erp_purchase"
+                placeholder="例如：project_demo"
                 className="bg-[#0d0d0d] border-[#3d3d3d] text-white placeholder:text-[#6b6b6b]"
               />
               <div className="text-[11px] text-[#6b6b6b]">
@@ -433,7 +464,7 @@ export function Header() {
               <Input
                 value={newProjectDisplayName}
                 onChange={(e) => setNewProjectDisplayName(e.target.value)}
-                placeholder="例如：ERP 采购推演项目"
+                placeholder="例如：采购管理推演项目"
                 className="bg-[#0d0d0d] border-[#3d3d3d] text-white placeholder:text-[#6b6b6b]"
               />
             </div>

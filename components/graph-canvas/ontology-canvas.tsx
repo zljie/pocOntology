@@ -31,6 +31,7 @@ import { ObjectType, LinkType } from "@/lib/types/ontology";
 import { generateId } from "@/lib/utils";
 
 import { OntologyKnowledgeGraph } from "./ontology-knowledge-graph";
+import { ProjectOnboardingCanvas } from "@/components/project-onboarding/project-onboarding-canvas";
 
 const nodeTypes: NodeTypes = {
   objectType: ObjectTypeNode,
@@ -61,19 +62,25 @@ function generateLayout(objectTypes: ObjectType[]): Record<string, { x: number; 
   return positions;
 }
 
-export function OntologyCanvas() {
-  const { objectTypes, linkTypes, addLinkType, addObjectType, neo4jProject, scenario } =
-    useOntologyStore();
+function OntologyCanvasMain() {
+  const { objectTypes, linkTypes, addLinkType, addObjectType, neo4jProject, scenario } = useOntologyStore();
   const {
     selectedNodeId,
     semanticHighlightedNodeIds,
+    semanticHighlightedEdgeIds,
     selectNode,
     selectEdge,
     selectObjectType,
     selectLinkType,
     clearAll,
   } = useSelectionStore();
-  const { showMinimap, showGrid, canvasViewMode, openRightPanel } = useUIStore();
+  const { showMinimap, showGrid, canvasViewMode, openRightPanel, workMode, setCanvasViewMode } = useUIStore();
+
+  React.useEffect(() => {
+    if (workMode !== "CONSULTING") return;
+    if (canvasViewMode === "KNOWLEDGE_GRAPH") return;
+    setCanvasViewMode("KNOWLEDGE_GRAPH");
+  }, [workMode, canvasViewMode, setCanvasViewMode]);
 
   // Convert object types to nodes
   const initialNodes: Node[] = useMemo(() => {
@@ -101,9 +108,10 @@ export function OntologyCanvas() {
         linkType: lt,
         cardinality: lt.cardinality,
         label: lt.displayName,
+        highlighted: semanticHighlightedEdgeIds.includes(lt.id),
       },
     }));
-  }, [linkTypes]);
+  }, [linkTypes, semanticHighlightedEdgeIds]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -124,16 +132,15 @@ export function OntologyCanvas() {
 
   // Sync with store data
   React.useEffect(() => {
-    const positions: Record<string, { x: number; y: number }> = {};
-    
-    // Preserve existing positions
-    nodes.forEach((node) => {
-      positions[node.id] = node.position;
-    });
-    
-    // Add new nodes with positions
-    objectTypes.forEach((ot) => {
-      if (!positions[ot.id]) {
+    setNodes((prev) => {
+      const positions: Record<string, { x: number; y: number }> = {};
+
+      for (const node of prev) {
+        positions[node.id] = node.position;
+      }
+
+      for (const ot of objectTypes) {
+        if (positions[ot.id]) continue;
         const cols = Math.ceil(Math.sqrt(objectTypes.length));
         const index = objectTypes.indexOf(ot);
         const col = index % cols;
@@ -143,19 +150,18 @@ export function OntologyCanvas() {
           y: row * 240 + 100,
         };
       }
-    });
 
-    const newNodes: Node[] = objectTypes.map((ot) => ({
-      id: ot.id,
-      type: "objectType",
-      position: positions[ot.id],
-      data: {
-        objectType: ot,
-        selected: selectedNodeId === ot.id,
-        highlighted: semanticHighlightedNodeIds.includes(ot.id),
-      },
-    }));
-    setNodes(newNodes);
+      return objectTypes.map((ot) => ({
+        id: ot.id,
+        type: "objectType",
+        position: positions[ot.id],
+        data: {
+          objectType: ot,
+          selected: selectedNodeId === ot.id,
+          highlighted: semanticHighlightedNodeIds.includes(ot.id),
+        },
+      }));
+    });
   }, [objectTypes, selectedNodeId, semanticHighlightedNodeIds, setNodes]);
 
   React.useEffect(() => {
@@ -168,10 +174,11 @@ export function OntologyCanvas() {
         linkType: lt,
         cardinality: lt.cardinality,
         label: lt.displayName,
+        highlighted: semanticHighlightedEdgeIds.includes(lt.id),
       },
     }));
     setEdges(newEdges);
-  }, [linkTypes, setEdges]);
+  }, [linkTypes, semanticHighlightedEdgeIds, setEdges]);
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -344,4 +351,10 @@ export function OntologyCanvas() {
       )}
     </div>
   );
+}
+
+export function OntologyCanvas() {
+  const { projectOnboardingMode } = useUIStore();
+  if (projectOnboardingMode) return <ProjectOnboardingCanvas />;
+  return <OntologyCanvasMain />;
 }

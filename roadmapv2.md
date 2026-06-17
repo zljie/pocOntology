@@ -72,7 +72,7 @@
 - 模拟回执雏形：对 GraphQL 模板进行模拟执行，返回可展示的 receipt
 
 #### 演示闭环脚本（Meta 可计算 + receipt 可复现）
-- Step 1：在顶部栏点击「加载示例」选择业务域（图书馆 / ERP）
+- Step 1：首次进入系统会弹出「选择加载方式」，可选：采购管理（PP）示例 / 餐饮管理（Food）示例 / 上传 YAML
 - Step 2：点击「语义查询」，输入一条业务语句（建议用对应示例域的核心动作）
 - Step 3：等待解析完成后，在预览面板查看 GraphQL 模板（GraphQL 页签）
 - Step 4：点击「执行」，得到模拟回执（receiptId / status / executedAt / latencyMs）并展示返回数据

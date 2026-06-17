@@ -9,8 +9,13 @@ interface UIStore {
   showMinimap: boolean;
   showGrid: boolean;
   canvasViewMode: 'EDITOR' | 'KNOWLEDGE_GRAPH';
+  workMode: 'ONTOLOGY_DESIGN' | 'CONSULTING';
+  projectOnboardingMode: boolean;
   showProposalBanner: boolean;
   showImportDialog: boolean;
+  showOsiImportDialog: boolean;
+  showStartupImportDialog: boolean;
+  consultingRightTab: 'consulting' | 'planner' | 'details';
   activeTab: string;
 
   // UI Actions
@@ -21,8 +26,15 @@ interface UIStore {
   toggleMinimap: () => void;
   toggleGrid: () => void;
   toggleCanvasViewMode: () => void;
+  setCanvasViewMode: (mode: 'EDITOR' | 'KNOWLEDGE_GRAPH') => void;
+  setWorkMode: (mode: 'ONTOLOGY_DESIGN' | 'CONSULTING') => void;
+  enterProjectOnboarding: () => void;
+  exitProjectOnboarding: () => void;
   toggleProposalBanner: () => void;
   setShowImportDialog: (show: boolean) => void;
+  setShowOsiImportDialog: (show: boolean) => void;
+  setShowStartupImportDialog: (show: boolean) => void;
+  setConsultingRightTab: (tab: 'consulting' | 'planner' | 'details') => void;
   setActiveTab: (tab: string) => void;
   openRightPanel: () => void;
   closeRightPanel: () => void;
@@ -38,8 +50,13 @@ export const useUIStore = create<UIStore>()(
       showMinimap: true,
       showGrid: true,
       canvasViewMode: 'EDITOR',
+      workMode: 'ONTOLOGY_DESIGN',
+      projectOnboardingMode: false,
       showProposalBanner: true,
       showImportDialog: false,
+      showOsiImportDialog: false,
+      showStartupImportDialog: false,
+      consultingRightTab: 'consulting',
       activeTab: 'general',
 
       toggleLeftPanel: () =>
@@ -52,7 +69,7 @@ export const useUIStore = create<UIStore>()(
         set({ leftPanelWidth: Math.max(280, Math.min(500, width)) }),
 
       setRightPanelWidth: (width) =>
-        set({ rightPanelWidth: Math.max(320, Math.min(600, width)) }),
+        set({ rightPanelWidth: Math.max(320, Math.min(900, width)) }),
 
       toggleMinimap: () =>
         set((state) => ({ showMinimap: !state.showMinimap })),
@@ -65,11 +82,32 @@ export const useUIStore = create<UIStore>()(
           canvasViewMode: state.canvasViewMode === 'EDITOR' ? 'KNOWLEDGE_GRAPH' : 'EDITOR',
         })),
 
+      setCanvasViewMode: (mode) =>
+        set({ canvasViewMode: mode }),
+
+      setWorkMode: (mode) =>
+        set({ workMode: mode }),
+
+      enterProjectOnboarding: () =>
+        set({ projectOnboardingMode: true, workMode: "ONTOLOGY_DESIGN", canvasViewMode: "EDITOR" }),
+
+      exitProjectOnboarding: () =>
+        set({ projectOnboardingMode: false }),
+
       toggleProposalBanner: () =>
         set((state) => ({ showProposalBanner: !state.showProposalBanner })),
 
       setShowImportDialog: (show) =>
         set({ showImportDialog: show }),
+
+      setShowOsiImportDialog: (show) =>
+        set({ showOsiImportDialog: show }),
+
+      setShowStartupImportDialog: (show) =>
+        set({ showStartupImportDialog: show }),
+
+      setConsultingRightTab: (tab) =>
+        set({ consultingRightTab: tab }),
 
       setActiveTab: (tab) =>
         set({ activeTab: tab }),
@@ -89,6 +127,9 @@ export const useUIStore = create<UIStore>()(
         showMinimap: state.showMinimap,
         showGrid: state.showGrid,
         canvasViewMode: state.canvasViewMode,
+        workMode: state.workMode,
+        projectOnboardingMode: state.projectOnboardingMode,
+        consultingRightTab: state.consultingRightTab,
       }),
     }
   )

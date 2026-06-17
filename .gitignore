@@ -13,3 +13,4 @@ pnpm-debug.log*
 .env*.local
 test-minimax.js
 LXGWWenKai-Regular.ttf
+tsconfig.tsbuildinfo

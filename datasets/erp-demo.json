@@ -1,0 +1,90 @@
+{
+  "entities": {
+    "Supplier": [
+      {
+        "supplierId": "S-1001",
+        "supplierName": "华东金属材料有限公司",
+        "creditRating": "A",
+        "paymentTerms": "NET30",
+        "status": "ACTIVE"
+      },
+      {
+        "supplierId": "S-1002",
+        "supplierName": "华南化工原料股份",
+        "creditRating": "B",
+        "paymentTerms": "NET45",
+        "status": "ACTIVE"
+      }
+    ],
+    "Material": [
+      {
+        "materialCode": "A001",
+        "materialName": "冷轧钢板 1mm",
+        "materialGroup": "METAL",
+        "baseUOM": "KG",
+        "standardPrice": 5.2
+      },
+      {
+        "materialCode": "C010",
+        "materialName": "工业酒精 95%",
+        "materialGroup": "CHEM",
+        "baseUOM": "L",
+        "standardPrice": 12.8
+      }
+    ],
+    "PurchaseRequisition": [
+      {
+        "prNumber": "PR-2026-0001",
+        "requestDate": "2026-04-01T09:00:00.000Z",
+        "requester": "张三",
+        "department": "制造一部",
+        "status": "APPROVED",
+        "materialCode": "A001",
+        "quantity": 100,
+        "requiredDate": "2026-04-10T00:00:00.000Z"
+      },
+      {
+        "prNumber": "PR-2026-0002",
+        "requestDate": "2026-04-05T13:20:00.000Z",
+        "requester": "李四",
+        "department": "研发中心",
+        "status": "PENDING",
+        "materialCode": "C010",
+        "quantity": 50,
+        "requiredDate": "2026-04-15T00:00:00.000Z"
+      }
+    ],
+    "PurchaseOrder": [
+      {
+        "poNumber": "PO-2026-0101",
+        "orderDate": "2026-04-02T10:10:00.000Z",
+        "totalAmount": 520,
+        "currency": "CNY",
+        "status": "RELEASED",
+        "supplierId": "S-1001",
+        "prNumber": "PR-2026-0001"
+      }
+    ],
+    "GoodsReceipt": [
+      {
+        "grNumber": "GR-2026-0501",
+        "postingDate": "2026-04-06T08:30:00.000Z",
+        "receivedQuantity": 100,
+        "qualityStatus": "UNRESTRICTED",
+        "poNumber": "PO-2026-0101",
+        "deliveryNote": "DN-778899"
+      }
+    ],
+    "Invoice": [
+      {
+        "invoiceNumber": "INV-2026-9001",
+        "issueDate": "2026-04-07T00:00:00.000Z",
+        "invoiceAmount": 520,
+        "taxAmount": 67.6,
+        "status": "VERIFIED",
+        "poNumber": "PO-2026-0101"
+      }
+    ]
+  }
+}
+
