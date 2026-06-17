@@ -6,6 +6,8 @@ import "server-only";
 
 import { PP_YAML } from "@/lib/osi/samples/pp";
 import { FOOD_YAML } from "@/lib/osi/samples/food";
+import { OSI_SCHEMA_TEXT } from "@/lib/osi/samples/osi-schema";
+import { BEHAVIOR_SCHEMA_TEXT } from "@/lib/osi/samples/behavior-schema";
 
 export type OsiSampleId = "pp" | "food";
 
@@ -27,3 +29,6 @@ export const OSI_SAMPLES: Record<OsiSampleId, OsiSampleSource> = {
     yamlText: FOOD_YAML,
   },
 };
+
+// 重新导出 schema 文本，方便验证层统一从这里取。
+export { OSI_SCHEMA_TEXT, BEHAVIOR_SCHEMA_TEXT };

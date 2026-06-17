@@ -3,10 +3,15 @@
   "version": "0.1.1",
   "private": true,
   "scripts": {
+    "prebuild": "node scripts/inline-osi-samples.mjs && node scripts/inline-datasets.mjs",
+    "predev": "node scripts/inline-osi-samples.mjs && node scripts/inline-datasets.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "inline:osi": "node scripts/inline-osi-samples.mjs",
+    "inline:datasets": "node scripts/inline-datasets.mjs",
+    "repro:import-sample": "node scripts/repro-import-sample.mjs"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.0.3",

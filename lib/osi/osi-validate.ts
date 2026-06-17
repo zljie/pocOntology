@@ -1,19 +1,13 @@
 import "server-only";
 
-import fs from "node:fs/promises";
-import path from "node:path";
 import { load as loadYaml } from "js-yaml";
-import Ajv2020 from "ajv/dist/2020";
+import Ajv2020 from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import type { OsiCoreDocument, OsiFileInput, OsiImportError } from "@/lib/osi/osi-import-types";
+import { OSI_SCHEMA_TEXT, BEHAVIOR_SCHEMA_TEXT } from "@/lib/osi/samples/schemas";
 
 function toError(fileName: string, message: string, pointer = ""): OsiImportError {
   return { fileName, path: pointer || "", message };
-}
-
-async function readJson(filePath: string) {
-  const text = await fs.readFile(filePath, "utf8");
-  return JSON.parse(text);
 }
 
 function normalizeAjvPointer(pointer: string | undefined) {
@@ -35,21 +29,24 @@ function tryParseJsonString(value: string) {
   }
 }
 
+function buildAjv() {
+  // Schema 由 scripts/inline-osi-samples.mjs 在构建期以 TS 字符串字面量形式
+  // 内联到 server bundle，Vercel Serverless 运行时无需读取文件系统。
+  const osiSchema = JSON.parse(OSI_SCHEMA_TEXT);
+  const behaviorSchema = JSON.parse(BEHAVIOR_SCHEMA_TEXT);
+  const ajv = new Ajv2020({ strict: true, allErrors: true });
+  addFormats(ajv);
+  ajv.addSchema(behaviorSchema);
+  const validateOsi = ajv.compile(osiSchema);
+  const validateBehavior = ajv.getSchema(behaviorSchema.$id) || ajv.compile(behaviorSchema);
+  return { validateOsi, validateBehavior };
+}
+
 export async function validateAndParseOsiFiles(files: OsiFileInput[]) {
   const errors: OsiImportError[] = [];
   const parsedDocs: Array<{ fileName: string; doc: OsiCoreDocument }> = [];
 
-  const osiSchemaPath = path.join(process.cwd(), "OSIFile/spec/osi-schema.json");
-  const behaviorSchemaPath = path.join(process.cwd(), "OSIFile/spec/behavior-layer.schema.json");
-  const osiSchema = await readJson(osiSchemaPath);
-  const behaviorSchema = await readJson(behaviorSchemaPath);
-
-  const ajv = new Ajv2020({ strict: true, allErrors: true });
-  addFormats(ajv);
-  ajv.addSchema(behaviorSchema);
-
-  const validateOsi = ajv.compile(osiSchema);
-  const validateBehavior = ajv.getSchema(behaviorSchema.$id) || ajv.compile(behaviorSchema);
+  const { validateOsi, validateBehavior } = buildAjv();
 
   for (const file of files) {
     const fileName = String(file?.name || "").trim() || "unknown.yaml";
